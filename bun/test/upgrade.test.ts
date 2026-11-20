@@ -39,6 +39,8 @@ const { Upstream } = await import("../src/upstream.ts");
 // Import config after Upstream so the path is the one the module resolved.
 const { CLIENT_VERSION_PATH } = await import("../src/config.ts");
 const VERSION_FILE = CLIENT_VERSION_PATH;
+// Guard: never write version state into a user's real data dir.
+assert.ok(VERSION_FILE.startsWith(tmpdir()), `test data dir escaped to ${VERSION_FILE}`);
 
 const catalogBody = JSON.stringify({
   min: "0.6.21",
