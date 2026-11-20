@@ -1,12 +1,13 @@
 // freepi-proxy entry point: wires the HTTP server, routes, background loops.
 
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { PORT, BASE_URL } from "./config.ts";
+import { DASHBOARD_PASSWORD, PORT, BASE_URL } from "./config.ts";
 import { Upstream } from "./upstream.ts";
 import { newTracker } from "./track.ts";
+import { ResponseCache } from "./cache.ts";
 import { bootState, onLoginToken, pollStats, startBackgroundLoops } from "./state.ts";
 import type { Ctx } from "./state.ts";
-import { handleCompletions, handleModels } from "./proxy.ts";
+import { handleCompletions, handleModels, handleUsage } from "./proxy.ts";
 import {
   handleAnthropicCountTokens,
   handleAnthropicMessages,
@@ -25,7 +26,8 @@ const tracker = newTracker();
 await tracker.ready();
 const state = await bootState();
 let gravityGetter: (() => string | undefined) | undefined;
-const ctx: Ctx = { upstream, tracker, state, getGravityContext: () => gravityGetter?.() };
+const cache = new ResponseCache();
+const ctx: Ctx = { upstream, tracker, state, cache, getGravityContext: () => gravityGetter?.() };
 const login = new LoginManager();
 login.onToken = (token: string) => {
   onLoginToken(ctx)(token);
@@ -78,19 +80,67 @@ function apiState(): ReturnType<typeof JSON.stringify> {
       proxyPort: PORT,
       lastCreditDiff: state.lastCreditDiff,
     },
+    cache: ctx.cache.stats(),
   });
 }
 
 // ---------- routing ----------
 
+/** Endpoints that must stay reachable without the dashboard password. */
+const DASHBOARD_OPEN: Record<string, true> = {
+  "/api/hello": true,
+  "/api/claude/config": true,
+};
+
+function isDashboardPath(p: string): boolean {
+  if (p === "/" || p === "/index.html") return true;
+  return p.startsWith("/api/") && !DASHBOARD_OPEN[p];
+}
+
+/** `Authorization: Basic base64(user:password)`; the user is ignored. */
+function basicOk(req: Request, password: string): boolean {
+  const header = req.headers.get("authorization");
+  if (!header || !/^basic /i.test(header)) return false;
+  let decoded: string;
+  try {
+    decoded = atob(header.slice(6).trim());
+  } catch {
+    return false;
+  }
+  const colon = decoded.indexOf(":");
+  if (colon < 0) return false;
+  const given = decoded.slice(colon + 1);
+  if (given.length !== password.length) return false;
+  let diff = 0;
+  for (let i = 0; i < password.length; i++) diff |= given.charCodeAt(i) ^ password.charCodeAt(i);
+  return diff === 0;
+}
+
+function basicChallenge(): Response {
+  return new Response(
+    JSON.stringify({ error: { message: "Dashboard password required.", type: "authentication_error", code: "unauthorized" } }),
+    {
+      status: 401,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "www-authenticate": 'Basic realm="freepi-proxy", charset="UTF-8"',
+      },
+    },
+  );
+}
+
 async function route(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const p = url.pathname;
 
+  // Optional dashboard lock. /v1/* and /mcp are never gated here.
+  if (DASHBOARD_PASSWORD && isDashboardPath(p) && !basicOk(req, DASHBOARD_PASSWORD)) return basicChallenge();
+
   if (p === "/v1/chat/completions" && req.method === "POST") return handleCompletions(req, ctx);
   if (p === "/v1/messages" && req.method === "POST") return handleAnthropicMessages(req, ctx);
   if (p === "/v1/messages/count_tokens" && req.method === "POST") return handleAnthropicCountTokens(req);
-  if (p === "/v1/models" && req.method === "GET") return handleModels(ctx);
+  if (p === "/v1/models" && req.method === "GET") return handleModels(ctx, req);
+  if (p === "/v1/usage" && req.method === "GET") return handleUsage(ctx, req);
   if (p === "/mcp" && (req.method === "POST" || req.method === "GET" || req.method === "DELETE")) return handleMcp(req, ctx);
 
   // Claude Code probes this before opening the Messages stream.
@@ -155,6 +205,10 @@ async function route(req: Request): Promise<Response> {
 // node:http <-> fetch Request bridge (works on node and bun)
 
 const server = createServer(async (nodeReq: IncomingMessage, nodeRes: ServerResponse) => {
+  // SSE through Nagle adds up to 40ms per flush; the whole point of the proxy
+  // is low-latency streaming.
+  nodeReq.socket?.setNoDelay(true);
+  nodeRes.socket?.setNoDelay(true);
   const ac = new AbortController();
   nodeReq.on("error", () => ac.abort());
   nodeRes.on("close", () => { if (!nodeRes.writableEnded) ac.abort(); });

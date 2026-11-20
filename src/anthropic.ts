@@ -9,6 +9,7 @@ import { CREDIT_DIFF_MIN_MS, DASHBOARD_URL } from "./config.ts";
 import type { Ctx } from "./state.ts";
 import { completeWithSessionRetry, settleSpend } from "./state.ts";
 import { estimateCredits } from "./proxy.ts";
+import type { CacheRun, CachedPayload } from "./cache.ts";
 import type { Catalog } from "./upstream.ts";
 import {
   allModelChoices,
@@ -585,21 +586,26 @@ async function record(
   status: number,
   usage: Usage | null,
   error?: string,
+  cached = false,
 ): Promise<void> {
   const pt = usage?.prompt_tokens ?? 0;
   const ct = usage?.completion_tokens ?? 0;
+  // A cache hit ran no upstream turn: zero spend, and nothing to settle.
+  const credits = cached ? 0 : estimateCredits(ctx, model, pt, ct);
   await ctx.tracker.add({
     ts: started,
     kind: "chat",
     model,
     pt,
     ct,
-    credits: estimateCredits(ctx, model, pt, ct),
+    credits,
     ms: Date.now() - started,
     status,
     source,
     ...(error ? { error } : {}),
+    ...(cached ? { cached: true } : {}),
   });
+  if (cached) return;
   const settle = await settleSpend(ctx, CREDIT_DIFF_MIN_MS);
   if (settle) ctx.tracker.reconcile(settle.credits, settle.sinceTs);
 }
@@ -631,43 +637,65 @@ export async function handleAnthropicMessages(req: Request, ctx: Ctx): Promise<R
 
   const source = new URL(req.url).searchParams.get("source") || "claude";
 
+  // Exact-response cache, keyed on the translated OpenAI body so both
+  // endpoints share entries (same turn in, same completion out).
+  const cacheKey = ctx.cache.key(JSON.stringify(translated.body));
+
   // Same per-request turn + ad cycle as the OpenAI endpoint; the session is
-  // retired and the request replayed once if upstream says it is spent.
-  let upstream: Response;
+  // retired and the request replayed once if upstream says it is spent. The
+  // cache wraps it, so that only happens on a miss.
+  let out: CacheRun;
   try {
-    upstream = (await completeWithSessionRetry(ctx, jwt, JSON.stringify(translated.body), req.signal)).upstream;
+    out = await ctx.cache.run(
+      cacheKey ?? crypto.randomUUID(),
+      async () => {
+        const up = (await completeWithSessionRetry(ctx, jwt, JSON.stringify(translated.body), req.signal)).upstream;
+        return {
+          status: up.status,
+          ctype: up.headers.get("content-type") || "application/json",
+          upstream: up,
+          cacheable: up.ok,
+        };
+      },
+      { store: cacheKey !== null },
+    );
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     await record(ctx, started, translated.model, source, 0, null, message);
     return anthropicError(502, "api_error", `Upstream connection failed: ${message}`);
   }
 
-  if (!upstream.ok) {
-    const text = await upstream.text().catch(() => "");
-    await record(ctx, started, translated.model, source, upstream.status, null, text.slice(0, 300));
-    return anthropicError(
-      upstream.status,
-      errorTypeForStatus(upstream.status),
-      upstreamErrorMessage(text, upstream.status),
+  if (out.hit) return replayCached(ctx, started, translated, source, out.payload);
+
+  if (out.status < 200 || out.status >= 300) {
+    const failed = await out.done;
+    const text = failed
+      ? new TextDecoder().decode(failed.body)
+      : await new Response(out.stream).text().catch(() => "");
+    await record(ctx, started, translated.model, source, out.status, null, text.slice(0, 300));
+    const failure = anthropicError(
+      out.status,
+      errorTypeForStatus(out.status),
+      upstreamErrorMessage(text, out.status),
     );
+    failure.headers.set("x-freepi-cache", "miss");
+    return failure;
   }
 
   if (!translated.stream) {
-    const text = await upstream.text();
+    const payload = await out.done;
+    const text = payload ? new TextDecoder().decode(payload.body) : await new Response(out.stream).text();
     let json: Record<string, any>;
     try {
       json = JSON.parse(text) as Record<string, any>;
     } catch {
-      await record(ctx, started, translated.model, source, upstream.status, null, "invalid upstream JSON");
+      await record(ctx, started, translated.model, source, out.status, null, "invalid upstream JSON");
       return anthropicError(502, "api_error", `Upstream returned invalid JSON: ${text.slice(0, 200)}`);
     }
-    await record(ctx, started, translated.model, source, upstream.status, json.usage ?? null);
-    return Response.json(toAnthropicResponse(json, translated.displayModel));
-  }
-
-  if (!upstream.body) {
-    await record(ctx, started, translated.model, source, upstream.status, null, "empty upstream body");
-    return anthropicError(502, "api_error", "Upstream returned an empty response body.");
+    await record(ctx, started, translated.model, source, out.status, json.usage ?? null);
+    return Response.json(toAnthropicResponse(json, translated.displayModel), {
+      headers: { "x-freepi-cache": "miss" },
+    });
   }
 
   const translator = new AnthropicStreamTranslator(translated.displayModel, translated.estimatedInputTokens);
@@ -679,25 +707,64 @@ export async function handleAnthropicMessages(req: Request, ctx: Ctx): Promise<R
       if (out) controller.enqueue(encoder.encode(out));
     },
     flush(controller) {
-      const out = translator.push(decoder.decode()) + translator.finish();
-      if (out) controller.enqueue(encoder.encode(out));
+      const tail = translator.push(decoder.decode()) + translator.finish();
+      if (tail) controller.enqueue(encoder.encode(tail));
+      // The body is fully translated here, so the usage figures are final.
+      void record(ctx, started, translated.model, source, 200, translator.usage);
     },
   });
 
-  const [client, drain] = upstream.body.pipeThrough(convert).tee();
-  void drain
-    .pipeTo(new WritableStream({ write() { /* drain */ } }))
-    .catch(() => { /* stream aborted */ })
-    .finally(() => {
-      void record(ctx, started, translated.model, source, upstream.status, translator.usage);
-    });
-
-  return new Response(client, {
+  return new Response(out.stream.pipeThrough(convert), {
     status: 200,
     headers: {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache",
       "x-accel-buffering": "no",
+      "x-freepi-cache": "miss",
+    },
+  });
+}
+
+/** Serve a stored OpenAI-shaped completion as an Anthropic response. */
+async function replayCached(
+  ctx: Ctx,
+  started: number,
+  translated: TranslatedRequest,
+  source: string,
+  payload: CachedPayload,
+): Promise<Response> {
+  const text = new TextDecoder().decode(payload.body);
+
+  if (!translated.stream) {
+    let json: Record<string, any>;
+    try {
+      json = JSON.parse(text) as Record<string, any>;
+    } catch {
+      await record(ctx, started, translated.model, source, payload.status, null, "invalid cached JSON");
+      return anthropicError(502, "api_error", `Cached response was not valid JSON: ${text.slice(0, 200)}`);
+    }
+    await record(ctx, started, translated.model, source, payload.status, json.usage ?? null, undefined, true);
+    return Response.json(toAnthropicResponse(json, translated.displayModel), {
+      headers: { "x-freepi-cache": "hit" },
+    });
+  }
+
+  // Replay the stored OpenAI SSE through a fresh translator, so the client
+  // sees exactly the event sequence it would have got from upstream.
+  const translator = new AnthropicStreamTranslator(translated.displayModel, translated.estimatedInputTokens);
+  let sse = "";
+  for (const chunk of text.split("\n\n")) {
+    if (chunk) sse += translator.push(chunk + "\n\n");
+  }
+  sse += translator.finish();
+  await record(ctx, started, translated.model, source, payload.status, translator.usage, undefined, true);
+  return new Response(sse, {
+    status: 200,
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      "x-accel-buffering": "no",
+      "x-freepi-cache": "hit",
     },
   });
 }

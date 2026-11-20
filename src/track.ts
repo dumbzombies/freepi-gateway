@@ -18,6 +18,7 @@ export interface RequestEntry {
   source: string;             // "api" | "mcp" | "ui"
   error?: string;
   reconciled?: boolean;       // true once scaled to a settled server figure
+  cached?: boolean;           // true when served from the exact-response cache
 }
 
 export interface HourBucket { ts: number; credits: number; requests: number; pt: number; ct: number }

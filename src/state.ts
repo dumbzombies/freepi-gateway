@@ -8,6 +8,7 @@ import type { TokenState } from "./token.ts";
 import { Upstream } from "./upstream.ts";
 import type { MeStats } from "./upstream.ts";
 import type { Tracker } from "./track.ts";
+import type { ResponseCache } from "./cache.ts";
 
 export interface AppState {
   token: TokenState;
@@ -29,6 +30,7 @@ export interface Ctx {
   upstream: Upstream;
   tracker: Tracker;
   state: AppState;
+  cache: ResponseCache;
   /** base64url Gravity context for ad attribution; undefined if pixel unavailable. */
   getGravityContext?: () => string | undefined;
 }

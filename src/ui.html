@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>freepi-proxy</title>
 <style>
   :root {
@@ -129,7 +129,7 @@
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); padding: 18px 20px;
   }
-  .panel + .panel, .panel + .adcard, .adcard + .panel, .grid-charts + .adcard, .panel + .grid-charts, .hero + .grid-charts, .hero + .panel, .hero + .adcard { margin-top: 14px; }
+  .panel + .panel, .panel + .grid-charts, .grid-charts + .panel, .hero + .grid-charts, .hero + .panel { margin-top: 14px; }
   .panel-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
   .panel-head h2 { font-size: 13.5px; font-weight: 650; letter-spacing: .01em; color: var(--text); }
   .panel-head .hint { font-size: 12px; color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -160,25 +160,6 @@
   svg.chart { width: 100%; height: 120px; display: block; }
   .chart-legend { display: flex; gap: 18px; margin-top: 10px; font-size: 12px; color: var(--muted); }
   .chart-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
-
-  /* ---------- ad ---------- */
-  .adcard {
-    display: none; align-items: center; gap: 14px;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 12px 16px;
-  }
-  .adcard.show { display: flex; }
-  .adtag { font: 700 11px/1 var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--border-strong); border-radius: 4px; padding: 3px 6px; flex: none; }
-  .adbody { min-width: 0; flex: 1; }
-  .adbody .ah { font-weight: 650; font-size: 13.5px; }
-  .adbody .ab { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
-  .adbody .why { color: var(--faint); font-size: 12px; margin-top: 3px; }
-  .adcta {
-    flex: none; margin-left: auto; font-size: 12px; font-weight: 650;
-    color: var(--accent); background: var(--accent-soft);
-    border: 1px solid var(--accent-border); padding: 7px 13px; border-radius: var(--radius-sm);
-  }
-  .adcta:hover { background: rgba(45,212,191,.2); text-decoration: none; }
 
   /* ---------- model spend rows ---------- */
   .mrow { display: grid; grid-template-columns: minmax(0,1fr) 190px 64px; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); }
@@ -373,6 +354,92 @@
     .chat-main { height: 72vh; }
     .chat-side { order: 2; }
   }
+  /* ---------- phones (<=640px): tight, no horizontal scroll ---------- */
+  @media (max-width: 640px) {
+    body { font-size: 15px; }
+    /* iOS zooms the page when a field under 16px gains focus */
+    input, select, textarea,
+    .chat-input textarea, .chat-input select, .chat-input input,
+    .setup input, .setup select { font-size: 16px; }
+    /* five tabs do not fit at 390px: wrap instead of hiding the last one */
+    .tabs { flex-wrap: wrap; overflow-x: visible; }
+    .tab { flex: 1 1 auto; justify-content: center; }
+    .chat-select, .chat-side select, .chat-side input, .chat-side textarea { font-size: 16px; }
+    /* thumb-sized targets: sliders and the stream checkbox were 15-16px tall */
+    .chat-side input[type="range"] { height: 30px; }
+    .chat-side input[type="checkbox"] { width: 22px; height: 22px; }
+    .check { min-height: 32px; }
+    .side { position: sticky; top: 0; z-index: 30; background: var(--bg); }
+    .msg-body, .code, .md-p { overflow-wrap: anywhere; }
+    .chat-input textarea { min-height: 76px; }
+    .content { padding: 12px 12px calc(28px + env(safe-area-inset-bottom)); }
+    .side { padding: 10px 12px; gap: 10px; }
+    .brand h1 { font-size: 14px; }
+    .brand .sub { font-size: 11px; }
+    .tabs { gap: 4px; }
+    .tab { padding: 9px 11px; font-size: 13px; }
+    .side-foot { width: 100%; justify-content: space-between; }
+    .side-actions { flex: 0 0 auto; }
+    .side-actions button, button { min-height: 40px; }
+    .status { font-size: 12px; padding: 6px 10px; }
+
+    .panel { padding: 14px; border-radius: 14px; }
+    .panel-head { gap: 8px; flex-wrap: wrap; }
+    .panel-head .hint { margin-left: 0; }
+    .hero { padding: 16px 16px 4px; border-radius: 14px; }
+    .hero-top { gap: 8px; }
+    .hero-num { font-size: 40px; margin-top: 6px; }
+    .hero-num .unit { font-size: 13px; margin-left: 6px; }
+    .hero-meta { gap: 6px 12px; font-size: 12px; }
+    .hero-meta .right { gap: 12px; flex-wrap: wrap; }
+    .hero-id { font-size: 12px; overflow-wrap: anywhere; }
+
+    .statrow {
+      display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px 10px; padding: 14px 0;
+    }
+    .statrow .item { min-width: 0; }
+    .statrow .k { letter-spacing: .05em; }
+    .statrow .v, .statrow .v.mono { font-size: 14px; overflow-wrap: anywhere; }
+
+    .grid-charts, .setup .cols { gap: 10px; }
+    svg.chart { height: 96px; }
+    .chart-legend { gap: 12px; flex-wrap: wrap; }
+
+    /* one row: name + value, bar underneath */
+    .mrow {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: "name val" "bar bar";
+      gap: 4px 10px; padding: 9px 0;
+    }
+    .mrow .name { grid-area: name; }
+    .mrow .val { grid-area: val; font-size: 12px; }
+    .mrow .bar { grid-area: bar; margin-top: 4px; }
+
+    .kv { grid-template-columns: 1fr; gap: 2px; margin-top: 8px; }
+    .kv dt { margin-top: 8px; }
+    .kv dd { overflow-wrap: anywhere; }
+    .setup pre { font-size: 11.5px; padding: 11px 12px; }
+    .setup .head { flex-wrap: wrap; }
+
+    .tablewrap { margin: 0 -2px; padding: 0 2px; }
+    th, td { padding: 6px 8px; }
+    th { font-size: 10px; letter-spacing: .06em; }
+    .pager { flex-wrap: wrap; gap: 8px; }
+
+    /* dvh keeps the composer above the URL bar as mobile chrome collapses */
+    .chat-main { height: 66vh; height: 70dvh; }
+    .chat-messages { padding: 14px 12px; }
+    .chat-side { padding: 14px; }
+    .chat-input { padding: 10px; }
+    .chat-input-bar { flex-wrap: wrap; gap: 8px; }
+    .chat-input-bar #chatCounter { flex: 1 1 100%; margin-right: 0; }
+
+    .notice { padding: 10px 12px; font-size: 13px; }
+    .modal { padding: 18px; }
+    .modal .code { font-size: 24px; letter-spacing: .16em; }
+    footer { gap: 6px 14px; font-size: 11.5px; }
+  }
 </style>
 </head>
 <body>
@@ -447,6 +514,7 @@
           <div class="item"><span class="k">proxy uptime</span><span class="v mono" id="uptime">–</span></div>
           <div class="item"><span class="k">seen by proxy</span><span class="v mono" id="proxyReqs">–</span></div>
           <div class="item"><span class="k">est. burn 24h</span><span class="v mono" id="burn24">–</span></div>
+          <div class="item"><span class="k">cache</span><span class="v mono" id="cacheHits">–</span></div>
         </div>
       </section>
 
@@ -466,16 +534,6 @@
           <div class="chart-legend"><span><i style="background:var(--accent)"></i>credits / day</span></div>
         </section>
       </div>
-
-      <section class="adcard" id="adcard" aria-label="Advertisement">
-        <span class="adtag">Ad</span>
-        <div class="adbody">
-          <div class="ah" id="adHeadline">–</div>
-          <div class="ab" id="adText"></div>
-          <div class="why">Ads fund your free inference — impressions are reported to keep completions active.</div>
-        </div>
-        <a class="adcta" id="adCta" href="#" target="_blank" rel="noopener">Open</a>
-      </section>
     </section>
 
     <!-- ================= CHAT ================= -->
@@ -624,7 +682,7 @@ OPENAI_API_KEY  = local
           <dt>Endpoint</dt><dd class="mono">http://127.0.0.1:<span id="kvPort">8452</span>/v1</dd>
           <dt>MCP tools</dt><dd>generate_image · web_search · docs_lookup · check_usage</dd>
           <dt>Auth</dt><dd>Free-pi JWT stored at <span class="mono">~/.free-pi/agent/credentials.json</span></dd>
-          <dt>Ad support</dt><dd>The proxy runs free-pi's ad cycle itself on every request, mirroring the CLI. The Overview tab shows the live ad as an additional impression surface.</dd>
+          <dt>Ad support</dt><dd>The proxy runs free-pi's ad cycle itself on every request, mirroring the CLI.</dd>
           <dt>Data</dt><dd class="mono">~/.freepi-proxy/requests.jsonl</dd>
           <dt>Notice</dt><dd>Ads fund inference; sessions may be used for training (freepi.ai/privacy).</dd>
         </dl>
@@ -668,18 +726,28 @@ let lastLoadAt = 0;
 
 async function load() {
   if (document.hidden) return;
-  try { S = await (await fetch("/api/state")).json(); render(); lastLoadAt = Date.now(); }
-  catch {
+  try {
+    const res = await fetch("/api/state");
+    if (!res.ok) throw new Error(res.status === 401 ? "locked — reload and enter the password" : `HTTP ${res.status}`);
+    S = await res.json();
+    render();
+    lastLoadAt = Date.now();
+  } catch (e) {
     $("statusTxt").textContent = "proxy unreachable";
-    $("updatedTxt").textContent = "offline — retrying…";
+    $("updatedTxt").textContent = e?.message || "offline — retrying…";
   }
 }
 
-function setTxt(id, v) { if (lastRender[id] !== v) { lastRender[id] = v; $(id).textContent = v; } }
+function setTxt(id, v) {
+  if (lastRender[id] === v) return;
+  lastRender[id] = v;
+  const el = $(id);
+  if (el) el.textContent = v;
+}
 
 // ---------- status ----------
 function renderStatus() {
-  const st = S.status.token;
+  const st = (S.status ?? {}).token;
   const pill = $("statusPill");
   const cls = st === "ok" ? "ok" : st === "missing" ? "bad" : st === "rejected" ? "bad" : "warn";
   if (lastRender.pill !== cls) { lastRender.pill = cls; pill.className = "status " + cls; }
@@ -693,7 +761,7 @@ function renderStatus() {
 
 // ---------- account + credits ----------
 function renderAccount() {
-  const L = S.live, st = S.status;
+  const L = S.live ?? {}, st = S.status ?? {};
   setTxt("acctHandle", st.handle ? "@" + st.handle : "–");
   setTxt("acctTier", st.tier ?? "–");
   setTxt("acctLane", st.lane ?? "–");
@@ -721,16 +789,27 @@ function renderAccount() {
   const burn = S.hourly.reduce((a, h) => a + h.credits, 0);
   setTxt("burn24", burn ? fmt(Math.round(burn)) + " cr" : "0 cr");
 
-  const up = S.server.uptimeMs || 0;
+  const C = S.cache || {};
+  setTxt("cacheHits", C.hits != null ? `${Math.round((C.hitRate || 0) * 100)}% · ${C.entries} ent` : "–");
+
+  const up = (S.server ?? {}).uptimeMs || 0;
   setTxt("uptime", up > 3600000 ? (up/3600000).toFixed(1)+"h" : up > 60000 ? Math.round(up/60000)+"m" : Math.round(up/1000)+"s");
   setTxt("footUp", "uptime " + $("uptime").textContent);
-  setTxt("footUpstream", S.server.baseUrl);
-  setTxt("kvPort", String(S.server.proxyPort));
+  const srv = S.server ?? {};
+  setTxt("footUpstream", srv.baseUrl);
+  setTxt("kvPort", String(srv.proxyPort));
 }
 
 // ---------- charts ----------
 function renderBurn() {
-  const H = S.hourly, W = 1000, CH = 112, gap = 6, bw = (W - gap * (H.length - 1)) / H.length;
+  const H = S.hourly, W = 1000, CH = 112, gap = 6;
+  if (!H.length) {
+    const empty = `<line x1="0" y1="${CH}" x2="${W}" y2="${CH}" stroke="#232329" stroke-width="1"/><text x="8" y="${CH - 10}" fill="#666" font-size="12">no usage yet</text>`;
+    if (lastRender.burn !== empty) { lastRender.burn = empty; $("burnChart").innerHTML = empty; }
+    setTxt("burnSum", "0 credits · 0 requests · estimated");
+    return;
+  }
+  const bw = (W - gap * (H.length - 1)) / H.length;
   const maxC = Math.max(1, ...H.map(h => h.credits));
   const maxR = Math.max(4, ...H.map(h => h.requests));
   let svg = `<line x1="0" y1="${CH}" x2="${W}" y2="${CH}" stroke="#232329" stroke-width="1"/>`;
@@ -741,8 +820,7 @@ function renderBurn() {
     const rh = h.requests / maxR * 22;
     svg += `<rect x="${(x + bw * .64).toFixed(1)}" y="${(CH - rh).toFixed(1)}" width="${(bw * .32).toFixed(1)}" height="${rh.toFixed(1)}" rx="2" fill="#2A2A32"><title>${h.requests} requests</title></rect>`;
   });
-  const key = svg.length + H.length;
-  if (lastRender.burn !== key) { lastRender.burn = key; $("burnChart").innerHTML = svg; }
+  if (lastRender.burn !== svg) { lastRender.burn = svg; $("burnChart").innerHTML = svg; }
   const sum = H.reduce((a, h) => a + h.credits, 0);
   const sumReq = H.reduce((a, h) => a + h.requests, 0);
   setTxt("burnSum", `${fmt(Math.round(sum))} credits · ${sumReq} requests · estimated`);
@@ -750,7 +828,14 @@ function renderBurn() {
 
 function renderDayChart() {
   if (!S.days) return;
-  const D = S.days, W = 1000, CH = 112, gap = 14, bw = (W - gap * (D.length - 1)) / D.length;
+  const D = S.days, W = 1000, CH = 112, gap = 14;
+  if (!D.length) {
+    const empty = `<line x1="0" y1="${CH}" x2="${W}" y2="${CH}" stroke="#232329" stroke-width="1"/><text x="8" y="${CH - 10}" fill="#666" font-size="12">no days recorded yet</text>`;
+    if (lastRender.dayChart !== empty) { lastRender.dayChart = empty; $("dayChart").innerHTML = empty; }
+    setTxt("daySum", "0 cr · 0 req · 14 days");
+    return;
+  }
+  const bw = (W - gap * (D.length - 1)) / D.length;
   const maxC = Math.max(1, ...D.map(d => d.credits));
   let svg = `<line x1="0" y1="${CH}" x2="${W}" y2="${CH}" stroke="#232329" stroke-width="1"/>`;
   D.forEach((d, i) => {
@@ -763,8 +848,7 @@ function renderDayChart() {
       svg += `<rect x="${x.toFixed(1)}" y="${(CH - 2).toFixed(1)}" width="${bw.toFixed(1)}" height="2" rx="1" fill="#232329"><title>${label}: no usage</title></rect>`;
     }
   });
-  const key = D.map(d => Math.round(d.credits)).join(",");
-  if (lastRender.dayChart !== key) { lastRender.dayChart = key; $("dayChart").innerHTML = svg; }
+  if (lastRender.dayChart !== svg) { lastRender.dayChart = svg; $("dayChart").innerHTML = svg; }
   const sum = D.reduce((a, d) => a + d.credits, 0);
   const sumReq = D.reduce((a, d) => a + d.requests, 0);
   setTxt("daySum", `${fmt(Math.round(sum))} cr · ${fmt(sumReq)} req · 14 days`);
@@ -785,9 +869,8 @@ function renderModels() {
       <span class="val">${m.credits ? fmt(Math.round(m.credits)) + " cr" : "–"}</span>
     </div>`;
   }).join("");
-  const key = html.length + M.length;
-  if (lastRender.models !== key) {
-    lastRender.models = key;
+  if (lastRender.models !== html) {
+    lastRender.models = html;
     $("modelList").innerHTML = html;
     requestAnimationFrame(() => {
       $("modelList").querySelectorAll(".bar > div").forEach(el => { el.style.width = el.dataset.w + "%"; });
@@ -819,17 +902,18 @@ function renderLog() {
     const cr = r.credits == null ? '<span class="faint">–</span>' :
       `<span class="${r.credits > 500 ? "bad" : ""}">${r.credits % 1 ? r.credits.toFixed(1) : fmt(r.credits)}</span>`;
     const tok = r.pt + r.ct ? `${fmt(r.pt)}/${fmt(r.ct)}` : "–";
+    const model = String(r.model ?? "–");
     return `<tr>
       <td class="mono faint">${t}</td>
       <td>${esc(kindLabel[r.kind] || r.kind)}</td>
-      <td class="id" title="${esc(r.model)}">${esc(r.model.length > 20 ? r.model.slice(0,19) + "…" : r.model)}</td>
+      <td class="id" title="${esc(model)}">${esc(model.length > 20 ? model.slice(0, 19) + "…" : model)}</td>
       <td class="num mono">${tok}</td>
       <td class="num mono">${cr}</td>
       <td class="num mono faint">${r.ms || "–"}</td>
       <td><span class="chip ${ok ? "src" : "off"}">${ok ? esc(r.source) : (r.status || "ERR")}</span></td>
     </tr>`;
   }).join("");
-  const key = html.length + ":" + logPage + ":" + total;
+  const key = html + ":" + logPage + ":" + total;
   if (lastRender.log !== key) {
     lastRender.log = key;
     $("logBody").innerHTML = html;
@@ -873,8 +957,8 @@ function renderCatalog() {
       </tr>`;
     }).join("");
   }
-  const key = S.catalog.models.map(m => m.id + (m.unavailable ? "!" : "")).join(",");
-  if (lastRender.catalog !== key) { lastRender.catalog = key; $("catalogBody").innerHTML = rows; }
+  // names and multipliers change while ids stay put: key on the markup
+  if (lastRender.catalog !== rows) { lastRender.catalog = rows; $("catalogBody").innerHTML = rows; }
   setTxt("catalogHint", `${S.catalog.models.length} models · grouped`);
 }
 
@@ -899,8 +983,12 @@ function renderDays() {
   setTxt("daysHint", "last 14 days · local time");
 }
 
+const RENDER_STEPS = [renderStatus, renderAccount, renderBurn, renderDayChart, renderModels, renderLog, renderCatalog, renderModelSelect, renderDays];
 function render() {
-  renderStatus(); renderAccount(); renderBurn(); renderDayChart(); renderModels(); renderLog(); renderCatalog(); renderModelSelect(); renderDays();
+  // one broken section must not blank the whole dashboard
+  for (const step of RENDER_STEPS) {
+    try { step(); } catch (e) { console.error("dashboard section failed:", step.name, e); }
+  }
   document.querySelectorAll("#oc,#env").forEach(pre => {
     if (!pre.dataset.ported) { pre.dataset.ported = "1"; pre.innerHTML = pre.innerHTML.replace(/PORT/g, S.server.proxyPort); }
   });
@@ -932,7 +1020,7 @@ function activate(name, focus = false) {
   });
   try { localStorage.setItem("freepi-tab", name); } catch {}
 }
-tabBtns.forEach(b => b.addEventListener("click", () => { activate(b.dataset.tab); if (b.dataset.tab === "overview") loadAd(true); }));
+tabBtns.forEach(b => b.addEventListener("click", () => activate(b.dataset.tab)));
 document.querySelector(".tabs").addEventListener("keydown", (e) => {
   const i = tabBtns.findIndex(b => b.classList.contains("active"));
   if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
@@ -949,60 +1037,6 @@ $("refreshBtn").onclick = () => fetch("/api/stats/refresh", { method: "POST" }).
 load();
 setInterval(load, 5000);
 
-// ---------- ads (real impression, reported — keeps completions unpaused) ----------
-// Cadence mirrors free-pi-cli's banner renderer: forced render when the
-// Overview tab opens (session_start analog), a refresh whenever the page
-// becomes visible or focused (turn_end analog) throttled to one render per
-// minute, and a 10-minute idle interval. Every /ads/next call mints a fresh
-// click_token server-side, so the impression below posts once per fetched ad
-// — the same dedup the CLI uses — and new creatives are picked up as the
-// server rotates them.
-let lastAdToken = null;
-const BANNER_REFRESH_MS = 10 * 60 * 1000;
-const BANNER_MIN_REFRESH_MS = 60 * 1000;
-let adInFlight = false, lastAdAt = 0;
-async function loadAd(force = false) {
-  if (document.hidden) return;
-  if (!force && (adInFlight || Date.now() - lastAdAt < BANNER_MIN_REFRESH_MS)) return;
-  adInFlight = true;
-  const adVisible = !$("tab-overview").hidden;   // only report what is actually on screen
-  try {
-    const r = await fetch("/api/ads/next?slot=banner");
-    if (r.status === 204) { $("adcard").classList.remove("show"); return; }
-    if (!r.ok) return;
-    const ad = await r.json();
-    const c = ad.creative || {};
-    setTxt("adHeadline", c.headline || "Sponsored");
-    setTxt("adText", c.body || "");
-    const cta = $("adCta");
-    cta.textContent = c.cta || "Learn more";
-    cta.href = ad.click_url || "#";
-    $("adcard").classList.add("show");
-
-    if (!adVisible) return;   // ad is in a hidden tab — refresh content, but report nothing
-
-    const key = ad.click_token || ad.ad_id;
-    if (key && key !== lastAdToken) {
-      lastAdToken = key;
-      let impFired = false;
-      if (ad.source === "gravity" && ad.imp_url && /^https:\/\/[^/]*trygravity\.(ai|com)\//.test(ad.imp_url)) {
-        try { fetch(ad.imp_url, { mode: "no-cors", cache: "no-store", keepalive: true }).catch(() => {}); impFired = true; }
-        catch { impFired = true; }
-      }
-      fetch("/api/ads/impression", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ad_id: ad.ad_id, click_token: ad.click_token, imp_fired: impFired }),
-        keepalive: true,
-      }).catch(() => {});
-    }
-  } catch { /* best-effort */ }
-  finally { adInFlight = false; lastAdAt = Date.now(); }
-}
-loadAd(true);
-setInterval(() => void loadAd(), BANNER_REFRESH_MS);
-document.addEventListener("visibilitychange", () => { if (!document.hidden) void loadAd(); });
-window.addEventListener("focus", () => void loadAd());
-
 // ---------- chat ----------
 const CHAT_KEY = "freepi-chat-v1";
 const CHAT_CATS = [
@@ -1016,7 +1050,9 @@ function chatCategory(m) {
   if (m.unavailable) return "unavailable";
   if (m.section === "defense" || /abliterated|uncensored|heretic|darkbloom/i.test(m.name)) return "uncensored";
   if (/premium/i.test(m.name) || (m.multiplier ?? 1) >= 10) return "premium";
-  if (/free unlimited/i.test(m.name) || (m.multiplier ?? 1) <= 1) return "free";
+  // Unlimited = the catalog's own free flag (or its name marker). Multiplier
+  // is NOT a proxy for it: cheap promo-tier models (0.2x–1x) burn allowance.
+  if (/free unlimited/i.test(m.name) || m.free === true) return "free";
   return "standard";
 }
 function loadChat() {
@@ -1037,7 +1073,7 @@ function estCredits(model, pt, ct) {
 
 function renderModelSelect() {
   if (!S?.catalog) return;
-  const sig = S.catalog.models.map(m => m.id + (m.unavailable ? "!" : "")).join(",");
+  const sig = S.catalog.models.map(m => `${m.id}|${m.name}|${m.multiplier}|${m.unavailable ? "!" : ""}`).join(",");
   if (sig === selSig) { updateModelMeta(); return; }
   selSig = sig;
   const sel = $("chatModel");
@@ -1075,7 +1111,7 @@ function updateModelMeta() {
 }
 
 // --- tiny safe markdown (escapes first, protects code) ---
-function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function escapeHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
 function md(src) {
   if (!src) return "";
   let s = escapeHtml(src);
@@ -1136,7 +1172,13 @@ function renderChatMessages() {
   $("regenBtn").hidden = !(hasUser && !chatBusy);
 }
 
+let bodyQueued = false;
 function updateLastMessageBody() {
+  if (bodyQueued) return;
+  bodyQueued = true;
+  requestAnimationFrame(() => { bodyQueued = false; paintLastMessageBody(); });
+}
+function paintLastMessageBody() {
   const box = $("chatMessages");
   const bodies = box.querySelectorAll(".msg-body");
   const last = chat.messages[chat.messages.length - 1];
@@ -1154,6 +1196,7 @@ async function streamChat() {
     else if (!m.pending && m.content) apiMsgs.push({ role: "assistant", content: m.content });
   }
   const assistant = chat.messages[chat.messages.length - 1];
+  if (!assistant || assistant.role !== "assistant") { chatBusy = false; $("sendBtn").disabled = false; $("stopBtn").hidden = true; return; }
   chatAbort = new AbortController();
   try {
     const res = await fetch("/v1/chat/completions?source=chat", {

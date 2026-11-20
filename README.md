@@ -1,70 +1,166 @@
 # freepi-proxy
 
-A **zero-dependency** local proxy, dashboard, chat UI, and MCP server for
-[free-pi](https://freepi.ai) (ad-supported, community-funded inference).
+**A local OpenAI- and Anthropic-compatible gateway for [free-pi](https://freepi.ai),
+with a dashboard, a chat UI and an MCP server — zero dependencies, no build step.**
 
-- **OpenAI-compatible** completions at `/v1` — point any agent that speaks the OpenAI API at it
-- **Anthropic-compatible** Messages API at `/v1/messages` — Claude Code works through `freepi-proxy claude`
-- **MCP server** at `/mcp` — `generate_image`, `web_search`, `docs_lookup`, `check_usage`
-- **Dashboard** at `/` — credits/allowance, burn & request log, model catalog, and a built-in **Chat** page
-- **Auth handled for you** — GitHub device-flow login in the UI; reuses the same credential file as `free-pi-cli`
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Runtime](https://img.shields.io/badge/runtime-Node.js%20%E2%89%A5%2022.19%20%7C%20Bun-informational)](https://nodejs.org)
+[![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](package.json)
 
-> **Unofficial.** This project is not affiliated with free-pi/freepi.ai. It talks to the same backend
-> the `free-pi-cli` uses; upstream behavior and client checks can change.
+free-pi funds inference with ads and hands every account a daily credit allowance. `freepi-proxy`
+turns that account into a normal API endpoint: any OpenAI- or Anthropic-speaking agent, and
+Claude Code, can talk to it on `127.0.0.1:8452` while the proxy handles authentication, ad
+attribution, metering, caching and session rotation.
 
-## Requirements
+> **Unofficial.** Not affiliated with free-pi / freepi.ai. It uses the same backend as
+> `free-pi-cli`; upstream behaviour and client checks can change.
 
-- **Node.js ≥ 22.19** *or* **Bun** — no `npm install`, no build step
-- A free-pi account (created via the dashboard login or `npx free-pi-cli@latest`)
+---
+
+## Contents
+
+- [Features](#features)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Endpoints](#endpoints)
+- [CLI](#cli)
+- [Connect an agent](#connect-an-agent)
+- [MCP tools](#mcp-tools)
+- [Dashboard](#dashboard)
+- [Credits, metering and cache](#credits-metering-and-cache)
+- [Configuration](#configuration)
+- [Security notes](#security-notes)
+- [Development](#development)
+- [License](#license)
+
+## Features
+
+| | |
+|---|---|
+| **OpenAI-compatible** | `POST /v1/chat/completions`, `GET /v1/models` — streaming and non-streaming |
+| **Anthropic-compatible** | `POST /v1/messages`, `/v1/messages/count_tokens` — Claude Code runs unmodified |
+| **MCP server** | Streamable HTTP at `/mcp`: `generate_image`, `web_search`, `docs_lookup`, `check_usage` |
+| **Dashboard** | Credits and allowance, burn charts, request log, live model catalog, built-in chat UI |
+| **Exact response cache** | Byte-identical requests are served from memory; `x-freepi-cache: hit\|miss` |
+| **Auth handled** | GitHub device-flow login in the dashboard; shares `~/.free-pi/agent/credentials.json` with `free-pi-cli` |
+| **Resilient sessions** | Single stable session id, automatic retirement and replay when upstream expires a session |
+| **Zero dependencies** | Pure Node/Bun standard library, TypeScript executed directly |
+
+## Install
+
+Both installers need **Node.js ≥ 22.19 or Bun** on `PATH`. They download the latest `main`
+archive, install to a user directory, and expose a `freepi-proxy` command. No admin rights.
+
+### Linux / macOS / Termux
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/therealfreddied/freepi-proxy/main/install.sh | bash
+```
+
+Installs to `${XDG_DATA_HOME:-$HOME/.local/share}/freepi-proxy` and links
+`$HOME/.local/bin/freepi-proxy`. Override with `FREEPI_HOME` and `FREEPI_BIN`.
+
+### Windows
+
+```powershell
+irm https://raw.githubusercontent.com/therealfreddied/freepi-proxy/main/install.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\freepi-proxy` and writes `freepi-proxy.cmd` into
+`%LOCALAPPDATA%\Microsoft\WindowsApps`, which is already on `PATH`. On Windows the command runs
+the proxy in the foreground; close the window or press `Ctrl+C` to stop it.
+
+### From source
+
+```sh
+git clone https://github.com/therealfreddied/freepi-proxy.git
+cd freepi-proxy
+
+node src/main.ts      # or: bun src/main.ts
+./freepi-proxy start -d
+```
+
+There is nothing to install: no `npm install`, no build step.
 
 ## Quick start
 
 ```sh
-# foreground
-node src/main.ts
-
-# or background via the launcher
-./freepi-proxy start -d
-
-# Bun
-bun src/main.ts
+freepi-proxy start -d      # background proxy on port 8452
+freepi-proxy open          # dashboard → log in with GitHub
+freepi-proxy status        # account, credits, refill time
 ```
 
-Then open **http://127.0.0.1:8452** and log in (GitHub device flow). The token is stored at
-`~/.free-pi/agent/credentials.json` (mode `0600`, shared with `free-pi-cli`).
+Open **http://127.0.0.1:8452**, complete the GitHub device-flow login, and the proxy is ready to
+serve. The token is written to `~/.free-pi/agent/credentials.json` (mode `0600`) and is reused by
+`free-pi-cli`. The proxy binds to `127.0.0.1` only and needs no API key of its own.
 
-The proxy binds to **`127.0.0.1` only** and requires no API key of its own.
+## Endpoints
 
-## CLI (`freepi-proxy`)
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/chat/completions` | OpenAI-compatible completions; `stream: true` supported |
+| `GET` | `/v1/models` | Live catalog; `?refresh=1` forces an upstream fetch (5 s floor) |
+| `GET` | `/v1/usage` | Authoritative quota, usage and cache counters as one stable JSON object |
+| `POST` | `/v1/messages` | Anthropic Messages API, translated to the OpenAI backend |
+| `POST` | `/v1/messages/count_tokens` | Anthropic token counting |
+| `GET` | `/mcp` | Streamable-HTTP MCP server |
+| `GET` | `/` | Dashboard (single self-contained HTML file) |
+| `GET` | `/api/state` | Dashboard state snapshot (credits, catalog, log, cache stats) |
+| `GET` | `/healthz`, `/readyz` | Liveness and readiness probes |
 
-The `freepi-proxy` launcher (symlink it somewhere on your `PATH`, e.g. `~/.local/bin/freepi-proxy`):
+`/v1/usage` example:
 
-| Command | What it does |
+```json
+{
+  "object": "usage", "ok": true, "error": null,
+  "handle": "…", "tier": "young", "lane": "standard", "notice": null,
+  "quota": { "allowance_credits": 15000, "remaining_credits_today": 14905,
+             "used_credits_today": 95, "remaining_pct": 99.4,
+             "spent_usd_today": 0.007, "cap_usd_today": 1.125,
+             "refill_at": "2026-11-21T00:00:00.000Z", "refill_in_ms": 1250225 },
+  "usage": { "requests_today": 355, "prompt_tokens_today": 21187327,
+             "completion_tokens_today": 197106, "lifetime_requests": 4021, "streak_days": 0 },
+  "cache": { "hits": 12, "misses": 40, "entries": 9, "bytes": 184320, "hitRate": 0.23 },
+  "proxy": { "uptime_ms": 6218, "catalog_fetched_at": 1795131544972, "stale_ms": 4808 }
+}
+```
+
+`ok: false` with `error: "no_token" | "no_stats_yet"` means nothing authoritative exists yet;
+fields are `null`, never absent.
+
+## CLI
+
+| Command | Description |
 |---|---|
-| `freepi-proxy start` | Run in the foreground (Ctrl+C to stop) |
+| `freepi-proxy start` | Run in the foreground (`Ctrl+C` to stop) |
 | `freepi-proxy start -d` | Start in the background |
 | `freepi-proxy stop` / `restart` | Stop or restart the background proxy |
-| `freepi-proxy status` | Running state + account/credits summary |
-| `freepi-proxy logs [-f] [n]` | Show/follow the log (`~/.freepi-proxy/proxy.log`) |
-| `freepi-proxy open` | Open the dashboard in your browser |
-| `freepi-proxy models` | List models from the live catalog |
-| `freepi-proxy claude` | Launch Claude Code in the current project using free-pi models |
+| `freepi-proxy status` | Running state plus account and credits summary |
+| `freepi-proxy logs [-f] [n]` | Show or follow `~/.freepi-proxy/proxy.log` |
+| `freepi-proxy open` | Open the dashboard in a browser |
+| `freepi-proxy models` | Print the live model list |
+| `freepi-proxy claude` | Launch Claude Code against the proxy |
 
-## Connect an agent (OpenAI-compatible)
+The Bash launcher is used on Linux, macOS and Termux. The Windows installer exposes a
+foreground-only `freepi-proxy` command; use `start "" /b node "%LOCALAPPDATA%\freepi-proxy\src\main.ts"`
+to detach it.
 
-Point any OpenAI-format client at the proxy and use **any non-empty** API key (the proxy injects your real JWT):
+## Connect an agent
+
+Point any OpenAI-format client at the proxy. Use **any non-empty** API key: the proxy injects your
+real credential.
 
 ```sh
 OPENAI_BASE_URL=http://127.0.0.1:8452/v1
 OPENAI_API_KEY=local
 ```
 
-Model IDs come from the live catalog (e.g. `glm-5.3-flash`, `deepseek-v4-flash`, `gpt-6-luna`,
-`solar-pro-4`, `gemma-4-uncensored`). The dashboard **Models** tab and `freepi-proxy models` show the current list, multipliers, and availability.
+Model IDs come from the live catalog (`glm-5.3-flash`, `deepseek-v4-flash`, `particle`, …). The
+Models tab and `freepi-proxy models` show the current list, multipliers and availability.
 
 ### OpenCode
 
-Example global config (`~/.config/opencode/opencode.json`) using the proxy as an OpenAI-compatible provider plus the MCP tools:
+`~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -77,8 +173,7 @@ Example global config (`~/.config/opencode/opencode.json`) using the proxy as an
       "settings": { "baseURL": "http://127.0.0.1:8452/v1", "apiKey": "local" },
       "models": {
         "glm-5.3-flash": { "name": "GLM 5.3 Flash · 1.5x", "limit": { "context": 1048576, "output": 8192 } },
-        "deepseek-v4-flash": { "name": "DeepSeek V4 Flash · 1x", "limit": { "context": 1048576, "output": 8192 } },
-        "gpt-6-luna": { "name": "GPT-6 Luna · 2x", "limit": { "context": 1048576, "output": 8192 } }
+        "deepseek-v4-flash": { "name": "DeepSeek V4 Flash · 1x", "limit": { "context": 1048576, "output": 8192 } }
       }
     }
   },
@@ -88,113 +183,101 @@ Example global config (`~/.config/opencode/opencode.json`) using the proxy as an
 }
 ```
 
-> OpenCode v2 may report "missing bearer token" if no credential is present — the `apiKey: "local"` setting above satisfies it. You can generate a fuller model list (all non-premium/available models) from the live catalog; the dashboard shows the current catalog.
-
 ### Claude Code
 
-Claude Code speaks the **Anthropic Messages API**, and the proxy now translates it to the same
-OpenAI-compatible backend. Launch Claude Code from your project:
-
 ```sh
-freepi-proxy claude
+freepi-proxy claude                  # start the proxy if needed and launch Claude Code
+freepi-proxy claude --list           # current model mapping
+freepi-proxy claude --model glm-5.3-flash
+freepi-proxy claude -- -p "say hi"   # flags after -- go to Claude Code
 ```
 
-The command starts the proxy if needed, builds a temporary Claude Code settings profile, and runs
-`claude` in the current directory. Your `~/.claude/settings.json` is left untouched.
-
-The latest free models are mapped onto Claude Code's model slots:
-
-| Claude Code slot | free-pi model |
-|---|---|
-| default / Opus | `deepseek-v4.1-flash` |
-| Fable | `particle` |
-| Sonnet | `glm-5.3-flash` |
-| Haiku / small-fast | `deepseek-v4-flash` |
-
-The mapping is chosen from the live catalog, so if the free lineup changes the proxy picks the
-available free models instead.
-
-```sh
-freepi-proxy claude --list                 # free models + current mapping
-freepi-proxy claude --model glm-5.3-flash  # change the default/main model
-freepi-proxy claude --sonnet solar-pro-4   # change one slot
-freepi-proxy claude -- -p "say hi"         # pass flags through to Claude Code
-```
-
-Any Anthropic-format client can also use `http://127.0.0.1:8452` as its base URL; the proxy
-serves `/v1/messages` and `/v1/messages/count_tokens`.
+The command builds a temporary settings profile and leaves `~/.claude/settings.json` untouched.
+Slots are mapped from the live catalog: main → `deepseek-v4.1-flash`, Sonnet → `glm-5.3-flash`,
+Haiku → `deepseek-v4-flash`, Fable → `particle`.
 
 ## MCP tools
 
-The proxy exposes a Streamable-HTTP MCP server at `http://127.0.0.1:8452/mcp`:
-
-| Tool | What it does |
+| Tool | Description |
 |---|---|
-| `generate_image` | Generates an image and saves it under `./images/` (returns the path — the model cannot see the image) |
+| `generate_image` | Generates an image and saves it under `./images/` (returns the path) |
 | `web_search` | Live web search |
-| `docs_lookup` | Look up library/framework documentation |
-| `check_usage` | Read-only allowance/credits snapshot |
+| `docs_lookup` | Library and framework documentation |
+| `check_usage` | Read-only allowance snapshot |
 
-Tool calls are metered against your daily allowance.
+Tool calls are metered against the daily allowance.
 
-## Dashboard & Chat
+## Dashboard
 
-The dashboard (a single, self-contained HTML file with no external requests) has four tabs:
+One self-contained HTML file, no external requests, four tabs:
 
-- **Overview** — credits remaining, daily cap, refill time, burn chart, and an ad panel (see below)
+- **Overview** — credits remaining, daily cap, refill time, 24 h burn chart, ad panel
 - **Activity** — paginated request log (model, tokens, estimated credits, status)
-- **Models** — live catalog with multipliers and availability
-- **Chat** — talk to any model directly: streaming responses, markdown + code-copy, temperature/max-tokens/system prompt, regenerate/export, and models grouped into **Best value**, **Standard**, **Uncensored/Abliterated**, **Premium/Heavy**, and **Unavailable**
+- **Models** — live catalog grouped into Free Unlimited, Standard, Uncensored, Premium, Unavailable
+- **Chat** — streaming chat with any model: markdown, code copy, temperature/max-tokens/system
+  prompt, regenerate, export; history kept in `localStorage`
 
-Chat conversations persist locally in your browser (`localStorage`). Messages route through the proxy and count against the shared daily allowance.
+Set `FREEPI_DASHBOARD_PASSWORD` to put the dashboard and `/api/*` behind HTTP Basic; `/v1/*` and
+`/mcp` are unaffected. The layout is mobile-first and works down to 320 px.
 
-## Credits, models & metering
+## Credits, metering and cache
 
-- Accounts receive a **daily free allowance** (credits, refilled daily) shared across every client. The authoritative figures come from the upstream `/me/stats`.
-- **Not all models cost the same.** The catalog multiplier is the real price (e.g. ~0.6×–3× for value/standard models, much higher for premium/ultrafast). Some models are uncensored/abliterated (labeled in the UI) and some are **credit-gated** (require purchased credits) depending on the account — gating is enforced upstream.
-- The dashboard shows authoritative allowance/remaining plus a local request log. **Per-request credits are an instant estimate** (tokens × multiplier × a calibrated rate) that **reconciles** to the server's settled spend when it advances (the server meter can settle with a delay).
-- Request history is stored locally at `~/.freepi-proxy/requests.jsonl` (kept ~14 days).
+- Accounts have a **daily credit allowance** shared by every client. The dashboard and `/v1/usage`
+  report the authoritative upstream `/me/stats` figures.
+- **Models are priced by multiplier** (`0.2×` value tiers up to premium/heavy). Credit-gated models
+  are enforced upstream. Per-request credits shown in the log are an instant estimate that
+  reconciles to the settled spend when the server meter catches up.
+- **Exact response cache.** The key is the canonical parsed request body (sorted object keys, array
+  order preserved, `stream` included). `/v1/chat/completions` and `/v1/messages` share entries
+  because the Anthropic handler keys on the translated OpenAI body. Hits cost nothing, are logged
+  with `cached: true`, and concurrent identical requests are single-flighted. Non-2xx responses are
+  never stored. `FREEPI_CACHE=0` disables the cache.
+- **Sessions.** The proxy pins one session id per install (`~/.freepi-proxy/session-id`). When the
+  backend retires a spent session (`session is too long`), the proxy mints a new one and replays
+  the request once.
+- Local data lives in `~/.freepi-proxy/` (`requests.jsonl`, `session-id`, `proxy.pid`, `proxy.log`).
 
-## Ads & attribution (how free-pi stays free)
-
-free-pi funds inference with ads. The proxy participates **legitimately** — it does not bypass or spoof ads:
-
-- It runs a Gravity pixel (when the `@gravity-ai/api` SDK is resolvable from a global `free-pi-cli` install) and attaches the `x-gravity-context`/`x-session-id` headers the backend expects.
-- The dashboard **Overview** tab fetches and displays an ad and reports an impression **only when the ad is actually visible**. Keep the Overview tab open so impressions can be reported.
-- If the backend pauses completions with `ads_required`, open the dashboard Overview to report an impression (or run `npx free-pi-cli@latest` once) and retry.
-
-Ad attribution is best-effort and must never break startup; if the Gravity SDK isn't found, the proxy still runs (it just won't attach pixel context).
-
-## Concurrent sessions
-
-The proxy reuses a **single, stable session id** across restarts (`~/.freepi-proxy/session-id`) so it occupies only one of the account's concurrent session slots (accounts are limited). If you ever hit `concurrent_session` errors from stale leases, the proxy can't clear them itself — running `npx free-pi-cli@latest` and using `/close-other-session` (or waiting for the lease to expire) will free a slot.
-
-That session id is **not** immortal. free-pi meters a *session* (one `free-pi-cli` run), not just a single request: once a session has spent its context/token budget, every later completion is rejected with `session is too long`, even a compacted prompt of 40k tokens. The CLI never notices because each launch starts a new session; a long-lived proxy would otherwise wedge itself. So when the backend reports a spent session, the proxy retires it, mints a fresh one, and replays the request once — compaction then works and the next turn goes through. The retired lease expires on its own.
-
-## Configuration (env vars)
+## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `FREEPI_PROXY_PORT` | `8452` | Listen port |
-| `FREEPI_PROXY_URL` | `http://127.0.0.1:<port>` | Base URL used in user-facing messages |
+| `FREEPI_PROXY_URL` | `http://127.0.0.1:<port>` | Base URL shown in messages |
+| `FREEPI_DASHBOARD_PASSWORD` | *(unset)* | HTTP Basic password for the dashboard and `/api/*` |
 | `FREEPI_BASE_URL` | `https://api.freepi.ai` | Upstream backend |
-| `FREEPI_CREDENTIALS_PATH` | `~/.free-pi/agent/credentials.json` | Override token file |
-| `FREEPI_NO_GRAVITY_PIXEL` | *(unset)* | Set to `1` to disable the Gravity pixel (not recommended) |
-| `FREEPI_GRAVITY_SDK` | *(unset)* | Explicit path to the `@gravity-ai/api` entry module |
+| `FREEPI_CREDENTIALS_PATH` | `~/.free-pi/agent/credentials.json` | Credential file |
+| `FREEPI_NO_GRAVITY_PIXEL` | *(unset)* | `1` disables the ad pixel (not recommended) |
+| `FREEPI_GRAVITY_SDK` | *(unset)* | Explicit path to the `@gravity-ai/api` module |
+| `FREEPI_CATALOG_REFRESH_MS` | `600000` | Catalog refresh interval |
+| `FREEPI_CACHE` | *(on)* | `0` disables the response cache |
+| `FREEPI_CACHE_TTL_MS` | `3600000` | Cache entry lifetime |
+| `FREEPI_CACHE_MAX_ENTRIES` | `300` | LRU entry cap |
+| `FREEPI_CACHE_MAX_BYTES` | `33554432` | Cache size cap; larger responses stream but are not stored |
 
-Local data lives in `~/.freepi-proxy/` (`requests.jsonl`, `session-id`, `proxy.pid`/`proxy.log` when daemonized).
+## Security notes
 
-## Caveats
+- The proxy listens on `127.0.0.1` only. Do not expose the port to a network without
+  `FREEPI_DASHBOARD_PASSWORD` and, for the API, your own reverse proxy with TLS.
+- The dashboard can read your account state and spend credits through the chat UI.
+- Tokens expire after months; re-login from the dashboard when `/v1/usage` returns `no_token`.
+- Android/Termux: install with the same command; if `#!/usr/bin/env` shebangs are unavailable in
+  your shell, run `bash ~/.local/share/freepi-proxy/freepi-proxy start -d`.
 
-- **Unofficial.** The backend can tighten client/version checks; keep the proxy updated if that happens.
-- **JWT expiry.** Tokens expire (on the order of months) — re-login from the dashboard when needed.
-- **Vision/image input depends on the upstream model.** The proxy translates Anthropic image blocks to OpenAI `image_url` data URLs; image *generation* works via the MCP tool.
-- **Consent.** By using free-pi you accept that ads fund inference and sessions may be used to train models — see <https://freepi.ai/privacy>.
+## Development
 
-## Contributing
+```sh
+bun test                       # 64 tests, 7 files (unit + HTTP integration)
+node --test test/*.test.ts     # Node runner for the root suite
+FREEPI_E2E=1 node --test test/e2e.test.ts   # opt-in live-backend test
+```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The project is intentionally zero-dependency and build-free.
+`bun/` holds an optional single-binary build (`Bun.serve`, bearer auth, graceful shutdown,
+`bun test`). See [`bun/README.md`](bun/README.md). The root `src/` tree is the canonical
+implementation.
+
+Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md). Keep the project zero-dependency and
+build-free.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) · free-pi uses ads to fund inference; see <https://freepi.ai/privacy>.

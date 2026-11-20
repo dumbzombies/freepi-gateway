@@ -27,8 +27,8 @@ export const CONSENT_VERSION = "4";
  * (refreshed live at startup), or this floor if the catalog fetch fails. */
 export const FALLBACK_CLIENT_VERSION = "0.6.19";
 
-/** Public catalog refresh cadence. */
-export const CATALOG_REFRESH_MS = 10 * 60 * 1000;
+/** Public catalog refresh cadence (models list auto-updates this often). */
+export const CATALOG_REFRESH_MS = Number(process.env.FREEPI_CATALOG_REFRESH_MS || 10 * 60 * 1000);
 
 /** How often we sync authoritative /me/stats for the dashboard. */
 export const STATS_POLL_MS = 60_000;
@@ -51,3 +51,12 @@ export const EST_CREDITS_PER_TOKEN = 0.00222;
 export const IMAGE_FALLBACK_DIR = join(homedir(), "freepi-images");
 
 export const UA = "freepi-proxy/1.0";
+
+/** Exact-response cache: on by default; FREEPI_CACHE=0 is the rollback switch. */
+export const CACHE_ENABLED = process.env.FREEPI_CACHE !== "0";
+export const CACHE_TTL_MS = Number(process.env.FREEPI_CACHE_TTL_MS || 3_600_000);
+export const CACHE_MAX_ENTRIES = Number(process.env.FREEPI_CACHE_MAX_ENTRIES || 300);
+export const CACHE_MAX_BYTES = Number(process.env.FREEPI_CACHE_MAX_BYTES || 32 * 1024 * 1024);
+
+/** Optional password for the dashboard (HTTP Basic). Empty = open. */
+export const DASHBOARD_PASSWORD = process.env.FREEPI_DASHBOARD_PASSWORD || "";

@@ -7,7 +7,10 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Logs / local runtime artifacts (never commit)
+# Scratch / local runtime artifacts (never commit)
+.scratch/
+*.png
+*.jpg
 *.log
 proxy.pid
 proxy.log

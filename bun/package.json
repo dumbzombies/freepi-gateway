@@ -1,0 +1,17 @@
+{
+  "name": "freepi-proxy-bun",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Always-on Bun build of freepi-proxy: OpenAI- and Anthropic-compatible endpoints, exact-response cache, bearer-token gate, health checks.",
+  "scripts": {
+    "start": "bun src/main.ts",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "build": "bun build --compile src/main.ts --outfile dist/freepi-proxy"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "license": "MIT"
+}

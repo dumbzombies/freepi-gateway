@@ -17,6 +17,16 @@ PIDFILE="${DATA}/proxy.pid"
 LOG="${DATA}/proxy.log"
 mkdir -p "$DATA"
 
+# Prefer Node (the documented runtime); fall back to Bun when only Bun is present.
+if command -v node >/dev/null 2>&1; then
+  RUN=(node)
+elif command -v bun >/dev/null 2>&1; then
+  RUN=(bun)
+else
+  echo "freepi-proxy needs Node.js >= 22.19 or Bun on PATH" >&2
+  exit 1
+fi
+
 usage() {
   cat <<EOF
 freepi-proxy — local proxy + dashboard + MCP for free-pi models
@@ -64,7 +74,7 @@ cmd_start() {
     return 0
   fi
   if [[ $bg -eq 1 ]]; then
-    nohup node "$DIR/src/main.ts" >> "$LOG" 2>&1 &
+    nohup "${RUN[@]}" "$DIR/src/main.ts" >> "$LOG" 2>&1 &
     echo $! > "$PIDFILE"
     disown "$!" 2>/dev/null || true
     # wait briefly for it to come up
@@ -80,7 +90,7 @@ cmd_start() {
     return 1
   else
     echo "starting freepi-proxy (foreground) → ${BASE}   (Ctrl+C to stop)"
-    exec node "$DIR/src/main.ts"
+    exec "${RUN[@]}" "$DIR/src/main.ts"
   fi
 }
 
@@ -116,7 +126,7 @@ cmd_status() {
     return 1
   fi
   echo "status: RUNNING → ${BASE}"
-  curl -fsS -m 4 "${BASE}/api/state" | node -e '
+  curl -fsS -m 4 "${BASE}/api/state" | "${RUN[@]}" -e '
     let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{
       try{const j=JSON.parse(d), s=j.status,l=j.live,sv=j.server;
         console.log("  account:  " + (s.token==="ok" ? "@"+s.handle+" · tier "+s.tier+" · lane "+s.lane : s.token));
@@ -147,7 +157,7 @@ cmd_open() {
 
 cmd_models() {
   if ! is_up; then echo "proxy not running — start it first: freepi-proxy start -d" >&2; return 1; fi
-  curl -fsS -m 5 "${BASE}/v1/models" | node -e '
+  curl -fsS -m 5 "${BASE}/v1/models" | "${RUN[@]}" -e '
     let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{
       try{JSON.parse(d).data.forEach(m=>console.log("freepi/"+m.id))}catch(e){console.log(d)}
     });'
@@ -204,7 +214,7 @@ cmd_claude() {
   fi
 
   if [[ $list -eq 1 ]]; then
-    node "$DIR/src/claude.ts" --list
+    "${RUN[@]}" "$DIR/src/claude.ts" --list
     return 0
   fi
 
@@ -215,7 +225,7 @@ cmd_claude() {
   fi
 
   local settings
-  if ! settings="$(node "$DIR/src/claude.ts" ${gen[@]+"${gen[@]}"})"; then
+  if ! settings="$("${RUN[@]}" "$DIR/src/claude.ts" ${gen[@]+"${gen[@]}"})"; then
     echo "could not build Claude Code settings" >&2
     return 1
   fi

@@ -39,11 +39,14 @@ export interface MeStats {
   prompt_tokens_today?: number;
   completion_tokens_today?: number;
   streak?: { days: number };
+  lifetime_requests?: number;
 }
 
 export class Upstream {
   catalog: Catalog | null = null;
   private clientVersion = FALLBACK_CLIENT_VERSION;
+  /** id -> multiplier; rebuilt with the catalog so estimateCredits is O(1). */
+  private modelIndex = new Map<string, number>();
 
   authHeaders(jwt: string): Record<string, string> {
     return {
@@ -67,15 +70,19 @@ export class Upstream {
         }>;
       };
       this.clientVersion = d.latest || this.clientVersion;
+      const models = (d.models || []).map((m) => ({
+        ...m,
+        multiplier: Number(m.usage_x ?? /~([\d.]+)x/.exec(m.name)?.[1] ?? 1),
+      }));
+      const index = new Map<string, number>();
+      for (const m of models) index.set(m.id, m.multiplier);
+      this.modelIndex = index;
       this.catalog = {
         latest: d.latest,
         min: d.min,
         defaultModel: d.model,
         fetchedAt: Date.now(),
-        models: (d.models || []).map((m) => ({
-          ...m,
-          multiplier: Number(m.usage_x ?? /~([\d.]+)x/.exec(m.name)?.[1] ?? 1),
-        })),
+        models,
       };
       return this.catalog;
     } catch {
@@ -84,7 +91,7 @@ export class Upstream {
   }
 
   multiplier(id: string): number {
-    return this.catalog?.models.find((m) => m.id === id)?.multiplier ?? 1;
+    return this.modelIndex.get(id) ?? 1;
   }
 
   /** GET /me with the JWT (account + optional server notice). */
