@@ -45,14 +45,23 @@ try {
   New-Item -ItemType Directory -Path (Split-Path $Dest) -Force | Out-Null
   Move-Item -Path $src.FullName -Destination $Dest
 
-  if (-not (Test-Path $ShimDir)) { New-Item -ItemType Directory -Path $ShimDir -Force | Out-Null }
-  $shim = Join-Path $ShimDir 'freepi-proxy.cmd'
   $launcher = if ($node) {
     '@echo off' + "`r`n" + "node `"$Dest\src\main.ts`" %*"
   } else {
     '@echo off' + "`r`n" + "bun `"$Dest\src\main.ts`" %*"
   }
-  Set-Content -Path $shim -Value $launcher -Encoding ASCII
+  try {
+    if (-not (Test-Path $ShimDir)) { New-Item -ItemType Directory -Path $ShimDir -Force | Out-Null }
+    Set-Content -Path (Join-Path $ShimDir 'freepi-proxy.cmd') -Value $launcher -Encoding ASCII
+    $shim = Join-Path $ShimDir 'freepi-proxy.cmd'
+  } catch {
+    # WindowsApps can be locked down; fall back to an install-local bin directory
+    $ShimDir = Join-Path $Dest 'bin'
+    New-Item -ItemType Directory -Path $ShimDir -Force | Out-Null
+    $shim = Join-Path $ShimDir 'freepi-proxy.cmd'
+    Set-Content -Path $shim -Value $launcher -Encoding ASCII
+    Write-Host "note: add $ShimDir to PATH to get the freepi-proxy command" -ForegroundColor Yellow
+  }
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
