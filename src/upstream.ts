@@ -1,6 +1,21 @@
 // free-pi upstream client: catalog, stats, tool endpoints, completions.
 
-import { BASE_URL, FALLBACK_CLIENT_VERSION, UA } from "./config.ts";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { BASE_URL, CLIENT_VERSION_PATH, FALLBACK_CLIENT_VERSION, UA } from "./config.ts";
+
+/** Compare dotted versions: negative when a < b. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map((x) => Number(x) || 0);
+  const pb = b.split(".").map((x) => Number(x) || 0);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+const VERSION_RE = /\b(\d+\.\d+\.\d+)\b/;
 
 export interface CatalogModel {
   id: string;
@@ -47,6 +62,49 @@ export class Upstream {
   private clientVersion = FALLBACK_CLIENT_VERSION;
   /** id -> multiplier; rebuilt with the catalog so estimateCredits is O(1). */
   private modelIndex = new Map<string, number>();
+  /** Upstream base URL. Overridable so tests can point at a fake server. */
+  private readonly baseUrl: string;
+
+  constructor(baseUrl: string = BASE_URL) {
+    this.baseUrl = baseUrl;
+    try {
+      const saved = readFileSync(CLIENT_VERSION_PATH, "utf8").trim();
+      if (VERSION_RE.test(saved) && compareVersions(saved, this.clientVersion) > 0) this.clientVersion = saved;
+    } catch { /* first run: keep the compiled floor */ }
+  }
+
+  /** Version the forced-update gate sees. */
+  get version(): string { return this.clientVersion; }
+
+  /** Adopt a client version when it is newer than the one in use; persist it so
+   * a restart does not regress to the compiled floor. */
+  adoptVersion(v: string | null | undefined): void {
+    if (!v || !VERSION_RE.test(v) || compareVersions(v, this.clientVersion) <= 0) return;
+    this.clientVersion = v;
+    try {
+      mkdirSync(dirname(CLIENT_VERSION_PATH), { recursive: true });
+      writeFileSync(CLIENT_VERSION_PATH, v);
+    } catch { /* in-memory adoption still fixes this run */ }
+  }
+
+  /** Learn the required version from an upgrade-gate error body. */
+  noteRequiredVersion(body: string): void {
+    const m = VERSION_RE.exec(body);
+    if (m) this.adoptVersion(m[1]);
+  }
+
+  /** Authenticated fetch that survives the forced-update gate: upstream answers
+   * 426 upgrade_required when x-client-version is below its minimum. Learn the
+   * required version (and refresh the catalog), then replay the call once. */
+  private async authedFetch(url: URL, init: () => RequestInit): Promise<Response> {
+    const res = await fetch(url, init());
+    if (res.status !== 426) return res;
+    const text = await res.text().catch(() => "");
+    this.noteRequiredVersion(text);
+    await this.refreshCatalog();
+    // rebuild init: the headers must carry the version learned above
+    return fetch(url, init());
+  }
 
   authHeaders(jwt: string): Record<string, string> {
     return {
@@ -59,7 +117,7 @@ export class Upstream {
   /** GET /client-version — public; parses usage multipliers out of names. */
   async refreshCatalog(): Promise<Catalog | null> {
     try {
-      const res = await fetch(new URL("/client-version", BASE_URL), { headers: { "user-agent": UA } });
+      const res = await fetch(new URL("/client-version", this.baseUrl), { headers: { "user-agent": UA } });
       if (!res.ok) return this.catalog;
       const d = (await res.json()) as {
         min: string; latest: string; model: string;
@@ -69,7 +127,8 @@ export class Upstream {
           unavailable?: boolean; section?: string;
         }>;
       };
-      this.clientVersion = d.latest || this.clientVersion;
+      this.adoptVersion(d.latest);
+      this.adoptVersion(d.min);
       const models = (d.models || []).map((m) => ({
         ...m,
         multiplier: Number(m.usage_x ?? /~([\d.]+)x/.exec(m.name)?.[1] ?? 1),
@@ -97,7 +156,7 @@ export class Upstream {
   /** GET /me with the JWT (account + optional server notice). */
   async me(jwt: string): Promise<{ handle?: string; tier?: string; lane?: string; notice?: string } | null> {
     try {
-      const res = await fetch(new URL("/me", BASE_URL), { headers: this.authHeaders(jwt) });
+      const res = await this.authedFetch(new URL("/me", this.baseUrl), () => ({ headers: this.authHeaders(jwt) }));
       if (!res.ok) return null;
       return (await res.json()) as { handle?: string; tier?: string; lane?: string; notice?: string };
     } catch { return null; }
@@ -106,7 +165,7 @@ export class Upstream {
   /** GET /me/stats with the JWT. */
   async stats(jwt: string): Promise<MeStats | null> {
     try {
-      const res = await fetch(new URL("/me/stats", BASE_URL), { headers: this.authHeaders(jwt) });
+      const res = await this.authedFetch(new URL("/me/stats", this.baseUrl), () => ({ headers: this.authHeaders(jwt) }));
       if (!res.ok) return null;
       return (await res.json()) as MeStats;
     } catch {
@@ -117,12 +176,12 @@ export class Upstream {
   /** POST one of the metered /tools/* endpoints. Returns parsed JSON or an error string. */
   async tool<T>(jwt: string, path: string, body: unknown): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
     try {
-      const res = await fetch(new URL(path, BASE_URL), {
+      const res = await this.authedFetch(new URL(path, this.baseUrl), () => ({
         method: "POST",
         headers: { ...this.authHeaders(jwt), "content-type": "application/json" },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(30_000),
-      });
+      }));
       if (res.ok) return { ok: true, data: (await res.json()) as T };
       const err = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
       const mapped: Record<string, string> = {
@@ -180,7 +239,7 @@ export class Upstream {
     if (opts?.sessionId) extra["x-session-id"] = opts.sessionId;
     if (opts?.turnId) extra["x-turn-id"] = opts.turnId;
     if (opts?.gravityContext) extra["x-gravity-context"] = opts.gravityContext;
-    return fetch(new URL("/v1/chat/completions", BASE_URL), {
+    return this.authedFetch(new URL("/v1/chat/completions", this.baseUrl), () => ({
       method: "POST",
       signal,
       headers: {
@@ -189,7 +248,7 @@ export class Upstream {
         ...extra,
       },
       body,
-    });
+    }));
   }
 
   /** GET /ads/next?slot=... — 0.6.19 CLI headers incl. turn id. 204/!ok => null. */

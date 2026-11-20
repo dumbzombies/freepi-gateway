@@ -82,6 +82,7 @@ use a TLS reverse proxy, or set the token.
 | `FREEPI_CACHE_MAX_BYTES` | `33554432` | Total cached body bytes |
 | `FREEPI_ACCESS_LOG` | *(off)* | `1` logs one line per request |
 | `FREEPI_CREDENTIALS_PATH` | `~/.free-pi/agent/credentials.json` | Token file |
+| `FREEPI_DATA_DIR` | `~/.freepi-proxy` | Data dir (persisted client version, session id) |
 | `FREEPI_NO_GRAVITY_PIXEL` | *(unset)* | `1` disables the ad-attribution pixel |
 
 ## 24/7 behaviour

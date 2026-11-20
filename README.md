@@ -232,6 +232,10 @@ Set `FREEPI_DASHBOARD_PASSWORD` to put the dashboard and `/api/*` behind HTTP Ba
   because the Anthropic handler keys on the translated OpenAI body. Hits cost nothing, are logged
   with `cached: true`, and concurrent identical requests are single-flighted. Non-2xx responses are
   never stored. `FREEPI_CACHE=0` disables the cache.
+- **Client version self-heals.** Upstream rejects a stale `x-client-version` with `426 upgrade_required`.
+  The proxy reads the required version out of that error (or the catalog), persists it to
+  `~/.freepi-proxy/client-version`, and replays the call once — so an upstream minimum bump never
+  reaches your client, and a restart no longer regresses to a compiled floor.
 - **Sessions.** The proxy pins one session id per install (`~/.freepi-proxy/session-id`). When the
   backend retires a spent session (`session is too long`), the proxy mints a new one and replays
   the request once.
@@ -246,6 +250,7 @@ Set `FREEPI_DASHBOARD_PASSWORD` to put the dashboard and `/api/*` behind HTTP Ba
 | `FREEPI_DASHBOARD_PASSWORD` | *(unset)* | HTTP Basic password for the dashboard and `/api/*` |
 | `FREEPI_BASE_URL` | `https://api.freepi.ai` | Upstream backend |
 | `FREEPI_CREDENTIALS_PATH` | `~/.free-pi/agent/credentials.json` | Credential file |
+| `FREEPI_DATA_DIR` | `~/.freepi-proxy` | Data dir (request log, session id, cached client version) |
 | `FREEPI_NO_GRAVITY_PIXEL` | *(unset)* | `1` disables the ad pixel (not recommended) |
 | `FREEPI_GRAVITY_SDK` | *(unset)* | Explicit path to the `@gravity-ai/api` module |
 | `FREEPI_CATALOG_REFRESH_MS` | `600000` | Catalog refresh interval |

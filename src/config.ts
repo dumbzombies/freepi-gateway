@@ -16,9 +16,13 @@ export const DASHBOARD_URL = process.env.FREEPI_PROXY_URL || `http://127.0.0.1:$
 export const CREDENTIALS_PATH = join(homedir(), ".free-pi", "agent", "credentials.json");
 
 /** Our own data dir: usage log + cached state. */
-export const DATA_DIR = join(homedir(), ".freepi-proxy");
+export const DATA_DIR = process.env.FREEPI_DATA_DIR || join(homedir(), ".freepi-proxy");
 export const REQUESTS_PATH = join(DATA_DIR, "requests.jsonl");
 export const SESSION_ID_PATH = join(DATA_DIR, "session-id");
+
+/** Last client version the backend accepted. Persisted so a restart (before the
+ * catalog is fetched) never sends a stale version and trips the upgrade gate. */
+export const CLIENT_VERSION_PATH = join(DATA_DIR, "client-version");
 
 /** Consent version free-pi-cli 0.6.x submits during login (src/consent.ts). */
 export const CONSENT_VERSION = "4";
