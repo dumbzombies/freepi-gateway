@@ -42,6 +42,7 @@ attribution, metering, caching and session rotation.
 | **MCP server** | Streamable HTTP at `/mcp`: `generate_image`, `web_search`, `docs_lookup`, `check_usage` |
 | **Dashboard** | Credits and allowance, burn charts, request log, live model catalog, built-in chat UI |
 | **Exact response cache** | Byte-identical requests are served from memory; `x-freepi-cache: hit\|miss` |
+| **Billing-aware catalog** | Models that 403 without purchased credits are hidden by default; `models.showPremium` exposes them |
 | **Auth handled** | GitHub device-flow login in the dashboard; shares `~/.free-pi/agent/credentials.json` with `free-pi-cli` |
 | **Resilient sessions** | Single stable session id, automatic retirement and replay when upstream expires a session |
 | **Zero dependencies** | Pure Node/Bun standard library, TypeScript executed directly |
@@ -54,7 +55,7 @@ archive, install to a user directory, and expose a `freepi-proxy` command. No ad
 ### Linux / macOS / Termux
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/therealfreddied/freepi-proxy/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dumbzombies/freepi-proxy/main/install.sh | bash
 ```
 
 Installs to `${XDG_DATA_HOME:-$HOME/.local/share}/freepi-proxy` and links
@@ -63,7 +64,7 @@ Installs to `${XDG_DATA_HOME:-$HOME/.local/share}/freepi-proxy` and links
 ### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/therealfreddied/freepi-proxy/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/dumbzombies/freepi-proxy/main/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\freepi-proxy` and writes `freepi-proxy.cmd` into
@@ -73,7 +74,7 @@ the proxy in the foreground; close the window or press `Ctrl+C` to stop it.
 ### From source
 
 ```sh
-git clone https://github.com/therealfreddied/freepi-proxy.git
+git clone https://github.com/dumbzombies/freepi-proxy.git
 cd freepi-proxy
 
 node src/main.ts      # or: bun src/main.ts
@@ -81,6 +82,23 @@ node src/main.ts      # or: bun src/main.ts
 ```
 
 There is nothing to install: no `npm install`, no build step.
+
+### Docker
+
+The Bun variant ships a container with a persistent data volume:
+
+```sh
+git clone https://github.com/dumbzombies/freepi-proxy.git
+cd freepi-proxy/bun
+cp .env.example .env
+sed -i "s/^FREEPI_PROXY_TOKEN=.*/FREEPI_PROXY_TOKEN=$(openssl rand -hex 24)/" .env
+docker compose up -d --build
+```
+
+Open **http://127.0.0.1:18095** and complete the GitHub login once. The token, session id, and
+request log live in the `freepi-data` volume; `docker compose down` keeps them, `down -v` deletes
+them. The container listens on `0.0.0.0:8452` inside the bridge network and is published only on
+host loopback. Set `FREEPI_DASHBOARD_PASSWORD` in `.env` to protect the dashboard.
 
 ## Quick start
 
@@ -224,9 +242,12 @@ Set `FREEPI_DASHBOARD_PASSWORD` to put the dashboard and `/api/*` behind HTTP Ba
 
 - Accounts have a **daily credit allowance** shared by every client. The dashboard and `/v1/usage`
   report the authoritative upstream `/me/stats` figures.
-- **Models are priced by multiplier** (`0.2×` value tiers up to premium/heavy). Credit-gated models
-  are enforced upstream. Per-request credits shown in the log are an instant estimate that
-  reconciles to the settled spend when the server meter catches up.
+- **Models are priced by multiplier** (`0.2×` value tiers up to premium/heavy). Models that return
+  `403 model_requires_credits` (every 1x+ model plus a few observed outliers) are hidden from
+  `/v1/models` and the dashboard by default; set `models.showPremium` in `~/.freepi-proxy/settings.json`
+  or `FREEPI_SHOW_PREMIUM=1` to list them. The free catalog flag is authoritative: `hy4-flash` is
+  billed even though the upstream refusal text calls it free. Per-request credits in the log are an
+  instant estimate that reconciles to settled spend.
 - **Exact response cache.** The key is the canonical parsed request body (sorted object keys, array
   order preserved, `stream` included). `/v1/chat/completions` and `/v1/messages` share entries
   because the Anthropic handler keys on the translated OpenAI body. Hits cost nothing, are logged
@@ -238,7 +259,9 @@ Set `FREEPI_DASHBOARD_PASSWORD` to put the dashboard and `/api/*` behind HTTP Ba
   reaches your client, and a restart no longer regresses to a compiled floor.
 - **Sessions.** The proxy pins one session id per install (`~/.freepi-proxy/session-id`). When the
   backend retires a spent session (`session is too long`), the proxy mints a new one and replays
-  the request once.
+  the request once. A `409` from the account's 4-concurrent-session cap is rewritten to
+  `code: "session_limit"` with recovery instructions. Free a slot with:
+  `curl -X POST https://api.freepi.ai/session/reset -H "authorization: Bearer $(jq -r .token ~/.free-pi/agent/credentials.json)"`.
 - Local data lives in `~/.freepi-proxy/` (`requests.jsonl`, `session-id`, `proxy.pid`, `proxy.log`).
 
 ## Configuration
@@ -258,6 +281,17 @@ Set `FREEPI_DASHBOARD_PASSWORD` to put the dashboard and `/api/*` behind HTTP Ba
 | `FREEPI_CACHE_TTL_MS` | `3600000` | Cache entry lifetime |
 | `FREEPI_CACHE_MAX_ENTRIES` | `300` | LRU entry cap |
 | `FREEPI_CACHE_MAX_BYTES` | `33554432` | Cache size cap; larger responses stream but are not stored |
+| `FREEPI_SHOW_PREMIUM` | *(off)* | `1` lists models that need purchased premium credits |
+
+`~/.freepi-proxy/settings.json` overrides the cache caps and ad/model toggles at startup:
+
+```json
+{
+  "models": { "showPremium": false },
+  "cache": { "enabled": true, "ttlMs": 3600000, "maxEntries": 300, "maxBytes": 33554432 },
+  "ads": { "gravity": true }
+}
+```
 
 ## Security notes
 
@@ -271,10 +305,16 @@ Set `FREEPI_DASHBOARD_PASSWORD` to put the dashboard and `/api/*` behind HTTP Ba
 ## Development
 
 ```sh
-bun test                       # 64 tests, 7 files (unit + HTTP integration)
-node --test test/*.test.ts     # Node runner for the root suite
+bun test                       # 70 tests, 9 files (Bun variant)
+node --test test/*.test.ts     # root suite
 FREEPI_E2E=1 node --test test/e2e.test.ts   # opt-in live-backend test
+
+node scripts/probe-context.mjs --help       # context ceiling per model
+node scripts/probe-billing.mjs --plan       # which models spend the allowance
 ```
+
+Both probes spend credits and read the same credentials file as the proxy
+(`FREEPI_CREDENTIALS_PATH`, default `~/.free-pi/agent/credentials.json`).
 
 `bun/` holds an optional single-binary build (`Bun.serve`, bearer auth, graceful shutdown,
 `bun test`). See [`bun/README.md`](bun/README.md). The root `src/` tree is the canonical

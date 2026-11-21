@@ -31,6 +31,8 @@ export interface Ctx {
   tracker: Tracker;
   state: AppState;
   cache: ResponseCache;
+  /** Effective startup settings (model visibility, cache caps, ads). */
+  settings: import("./settings.ts").Settings;
   /** base64url Gravity context for ad attribution; undefined if pixel unavailable. */
   getGravityContext?: () => string | undefined;
 }

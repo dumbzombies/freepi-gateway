@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # freepi-proxy one-shot installer for Linux, macOS and Termux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/therealfreddied/freepi-proxy/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/dumbzombies/freepi-proxy/main/install.sh | bash
 #
 # Installs into ${FREEPI_HOME:-$XDG_DATA_HOME/freepi-proxy} and puts a
 # `freepi-proxy` launcher on your PATH (${FREEPI_BIN:-$HOME/.local/bin}).
 # Requires: bash, curl (or wget), tar, and Node.js >= 22.19 or Bun.
 set -euo pipefail
 
-REPO="therealfreddied/freepi-proxy"
+REPO="dumbzombies/freepi-proxy"
 BRANCH="${FREEPI_BRANCH:-main}"
 DEST="${FREEPI_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/freepi-proxy}"
 BIN="${FREEPI_BIN:-$HOME/.local/bin}"

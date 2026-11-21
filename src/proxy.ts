@@ -6,6 +6,7 @@ import { CREDIT_DIFF_MIN_MS, DASHBOARD_URL, EST_CREDITS_PER_TOKEN } from "./conf
 import type { Ctx } from "./state.ts";
 import { completeWithSessionRetry, pollStats, settleSpend } from "./state.ts";
 import type { CacheRun } from "./cache.ts";
+import { isModelVisible, isPremiumOnly } from "./visibility.ts";
 
 /** Instant local estimate: tokens × model multiplier × calibrated base rate. */
 export function estimateCredits(ctx: Ctx, model: string, pt: number, ct: number): number {
@@ -50,7 +51,7 @@ export async function handleModels(ctx: Ctx, req?: Request): Promise<Response> {
     if (age > CATALOG_FORCE_MIN_MS) await ctx.upstream.refreshCatalog();
   }
   const models = (ctx.upstream.catalog?.models ?? [])
-    .filter((m) => !m.unavailable)
+    .filter((m) => isModelVisible(m, ctx.settings))
     .map((m) => ({
       // OpenAI fields
       id: m.id,
@@ -60,6 +61,11 @@ export async function handleModels(ctx: Ctx, req?: Request): Promise<Response> {
       type: "model",
       display_name: m.display_name || m.name.split(" · ")[0] || m.id,
       created_at: new Date(ctx.upstream.catalog?.fetchedAt ?? Date.now()).toISOString(),
+      // Billing class: `free` is catalog no-charge, `premium` needs purchased
+      // credits (403 model_requires_credits without them).
+      free: m.free === true,
+      premium: isPremiumOnly(m),
+      multiplier: m.multiplier,
     }));
   return Response.json({
     object: "list",
@@ -126,6 +132,24 @@ export async function handleUsage(ctx: Ctx, req: Request): Promise<Response> {
       stale_ms: ctx.state.liveAt ? Date.now() - ctx.state.liveAt : null,
     },
   }, { headers: { "cache-control": "no-store" } });
+}
+
+/** Rewrite upstream's concurrent-session rejection into a documented error. */
+export function sessionLimitError(status: number, text: string): string | null {
+  if (status !== 409) return null;
+  if (!/session|concurrent|limit/i.test(text)) return null;
+  let upstream: unknown = undefined;
+  try {
+    upstream = (JSON.parse(text) as { error?: unknown }).error;
+  } catch { /* keep the raw text out of the response */ }
+  return JSON.stringify({
+    error: {
+      message: "free-pi allows 4 concurrent sessions per account. Close another free-pi CLI/proxy session, then retry.",
+      type: "freepi_proxy_error",
+      code: "session_limit",
+      upstream,
+    },
+  });
 }
 
 export async function handleCompletions(req: Request, ctx: Ctx): Promise<Response> {
@@ -213,10 +237,12 @@ export async function handleCompletions(req: Request, ctx: Ctx): Promise<Respons
       ts: started, kind: "chat", model, pt: 0, ct: 0, credits: null, ms: Date.now() - started,
       status: out.status, source, error: text.slice(0, 300),
     });
-    // pass upstream error shape through (401 daily caps etc.)
-    return new Response(text || JSON.stringify({ error: { message: `upstream HTTP ${out.status}`, type: "freepi_proxy_error" } }), {
+    // pass upstream error shape through (401 daily caps etc.), but make the
+    // account's 4-session cap actionable: upstream's raw 409 is cryptic.
+    const limit = sessionLimitError(out.status, text);
+    return new Response(limit ?? (text || JSON.stringify({ error: { message: `upstream HTTP ${out.status}`, type: "freepi_proxy_error" } })), {
       status: out.status,
-      headers: { "content-type": out.ctype, "x-freepi-cache": "miss" },
+      headers: { "content-type": limit ? "application/json; charset=utf-8" : out.ctype, "x-freepi-cache": "miss" },
     });
   }
 

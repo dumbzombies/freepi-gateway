@@ -6,6 +6,8 @@ import { ACCESS_LOG, DASHBOARD_PASSWORD, DASHBOARD_URL, PORT, PROXY_TOKEN } from
 import { Upstream } from "./upstream.ts";
 import { newTracker } from "./track.ts";
 import type { Ctx } from "./state.ts";
+import { defaultSettings } from "./settings.ts";
+import { isModelVisible, isPremiumOnly } from "./visibility.ts";
 import { pollStats } from "./state.ts";
 import { handleCompletions, handleModels, handleUsage } from "./proxy.ts";
 import {
@@ -265,7 +267,9 @@ export function apiState(ctx: Ctx): Record<string, unknown> {
         defaultModel: ctx.upstream.catalog.defaultModel,
         latest: ctx.upstream.catalog.latest,
         min: ctx.upstream.catalog.min,
-        models: ctx.upstream.catalog.models,
+        models: ctx.upstream.catalog.models
+          .filter((m) => isModelVisible(m, ctx.settings))
+          .map((m) => ({ ...m, premium: isPremiumOnly(m) })),
       }
       : null,
     server: {
@@ -306,6 +310,7 @@ export function testCtx(overrides: Partial<Ctx> = {}): Ctx {
       lastSettledUsd: null,
       lastSettleAt: Date.now(),
     },
+    settings: defaultSettings(),
     ...overrides,
   };
 }

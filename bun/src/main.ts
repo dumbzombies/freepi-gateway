@@ -17,6 +17,7 @@ import { ResponseCache } from "./cache.ts";
 import { LoginManager } from "./token.ts";
 import { startGravityPixel } from "./gravity.ts";
 import { createHandler } from "./app.ts";
+import { loadSettings } from "./settings.ts";
 // Embedded at build time so `bun build --compile` ships a single file with the
 // dashboard inside it (no runtime path lookup).
 import uiHtml from "./ui.html" with { type: "text" };
@@ -25,16 +26,17 @@ const upstream = new Upstream();
 const tracker = newTracker();
 await tracker.ready();
 const state = await bootState();
-const cache = new ResponseCache();
+const settings = await loadSettings();
+const cache = new ResponseCache(settings.cache);
 let gravityGetter: (() => string | undefined) | undefined;
-const ctx: Ctx = { upstream, tracker, state, cache, getGravityContext: () => gravityGetter?.() };
+const ctx: Ctx = { upstream, tracker, state, cache, settings, getGravityContext: () => gravityGetter?.() };
 
 const login = new LoginManager();
 login.onToken = (token: string) => {
   onLoginToken(ctx)(token);
-  gravityGetter = startGravityPixel(token);
+  gravityGetter = settings.ads.gravity ? startGravityPixel(token) : undefined;
 };
-if (state.token.token) gravityGetter = startGravityPixel(state.token.token);
+if (state.token.token && settings.ads.gravity) gravityGetter = startGravityPixel(state.token.token);
 
 // Catalog first: /readyz should be truthful right after boot, and model ids are
 // needed by the very first Claude Code request. A failure here is not fatal.

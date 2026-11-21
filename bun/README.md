@@ -153,7 +153,7 @@ request log and session id to persist.
 ## Tests
 
 ```sh
-bun test                # 56 tests: cache, models, sessions, translation, HTTP
+bun test                # 70 tests: cache, models, visibility, sessions, translation, HTTP
 bun test test/app.test.ts
 ```
 

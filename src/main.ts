@@ -3,6 +3,8 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { DASHBOARD_PASSWORD, PORT, BASE_URL } from "./config.ts";
 import { Upstream } from "./upstream.ts";
+import { loadSettings } from "./settings.ts";
+import { isModelVisible, isPremiumOnly } from "./visibility.ts";
 import { newTracker } from "./track.ts";
 import { ResponseCache } from "./cache.ts";
 import { bootState, onLoginToken, pollStats, startBackgroundLoops } from "./state.ts";
@@ -26,14 +28,15 @@ const tracker = newTracker();
 await tracker.ready();
 const state = await bootState();
 let gravityGetter: (() => string | undefined) | undefined;
-const cache = new ResponseCache();
-const ctx: Ctx = { upstream, tracker, state, cache, getGravityContext: () => gravityGetter?.() };
+const settings = await loadSettings();
+const cache = new ResponseCache(settings.cache);
+const ctx: Ctx = { upstream, tracker, state, cache, settings, getGravityContext: () => gravityGetter?.() };
 const login = new LoginManager();
 login.onToken = (token: string) => {
   onLoginToken(ctx)(token);
-  gravityGetter = startGravityPixel(token);
+  gravityGetter = settings.ads.gravity ? startGravityPixel(token) : undefined;
 };
-if (state.token.token) gravityGetter = startGravityPixel(state.token.token);
+if (state.token.token && settings.ads.gravity) gravityGetter = startGravityPixel(state.token.token);
 
 const UI_HTML = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "ui.html"), "utf8");
 
@@ -71,7 +74,9 @@ function apiState(): ReturnType<typeof JSON.stringify> {
       defaultModel: upstream.catalog.defaultModel,
       latest: upstream.catalog.latest,
       min: upstream.catalog.min,
-      models: upstream.catalog.models,
+      models: upstream.catalog.models
+        .filter((m) => isModelVisible(m, settings))
+        .map((m) => ({ ...m, premium: isPremiumOnly(m) })),
     } : null,
     server: {
       baseUrl: BASE_URL,

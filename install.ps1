@@ -1,6 +1,6 @@
 # freepi-proxy one-shot installer for Windows (PowerShell 5.1+ / 7+).
 #
-#   irm https://raw.githubusercontent.com/therealfreddied/freepi-proxy/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/dumbzombies/freepi-proxy/main/install.ps1 | iex
 #
 # Installs into %LOCALAPPDATA%\freepi-proxy and writes freepi-proxy.cmd into a
 # directory that is already on PATH, so `freepi-proxy` works in any new shell.
@@ -8,7 +8,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$Repo   = 'therealfreddied/freepi-proxy'
+$Repo   = 'dumbzombies/freepi-proxy'
 $Branch = if ($env:FREEPI_BRANCH) { $env:FREEPI_BRANCH } else { 'main' }
 $Dest   = if ($env:FREEPI_HOME) { $env:FREEPI_HOME } else { Join-Path $env:LOCALAPPDATA 'freepi-proxy' }
 $ShimDir = Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps'

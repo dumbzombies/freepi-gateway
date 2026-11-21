@@ -25,6 +25,8 @@ Shared behavior must be fixed in both trees.
 |`upstream.ts`|free-pi client: catalog, version negotiation and 426 gate, `/me`, stats, tools, completions, ads|
 |`token.ts`|Credentials load/save, `/me` validation, device login|
 |`cache.ts`|Exact-response LRU: TTL, byte cap, single-flight; SSE replay via fresh translator|
+|`settings.ts`|Startup settings file: cache caps, `models.showPremium`, Gravity toggle|
+|`visibility.ts`|Premium-403 model classification, shared by `/v1/models` and `/api/state`|
 |`models.ts`|Aliases, free-model filtering, slot mapping|
 |`mcp.ts`|JSON-RPC over POST: `initialize`, `ping`, `tools/list`, `tools/call`|
 |`track.ts`|`requests.jsonl` append + in-memory aggregates for `/api/state`|
@@ -58,8 +60,10 @@ reconciled with settled spend. Ad/impression reporting must never be bypassed.
   `FREEPI_E2E=1` (spends credits; never in routine runs).
 - Bun: `cd bun && bun test`; preload (`bun/test/setup.ts`) isolates state globally.
 - Bun `test/app.test.ts` uses `testCtx()` + `createHandler()` against a fake upstream.
+- Visibility/session-cap coverage: `test/visibility.test.ts` and `bun/test/visibility.test.ts`.
 - Thin coverage: `mcp.ts`, `proxy.ts`, `token.ts`, `track.ts`, `gravity.ts`,
   `upstream.ts`.
+- Probes: `node scripts/probe-context.mjs`, `node scripts/probe-billing.mjs` (spend credits).
 
 ## Known constraints
 
@@ -69,3 +73,5 @@ reconciled with settled spend. Ad/impression reporting must never be bypassed.
 - Launcher prefers Node, pins pid/log to `~/.freepi-proxy`, ignores `FREEPI_DATA_DIR`.
 - Windows `install.ps1` shim is foreground-only.
 - No linter, formatter, CI, or coverage gate.
+- Docker daemon is unavailable in this environment; the container build is documented but unverified here.
+- Default `/v1/models` exposes 10 models (4 free + 6 allowance-charged); premium needs an opt-in.

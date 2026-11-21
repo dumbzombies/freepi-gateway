@@ -186,12 +186,21 @@ test("token accepted via bearer, x-api-key and query", async () => {
 
 // ---------- models + usage ----------
 
-test("models list omits unavailable entries and keeps catalog order", async () => {
+test("models list hides unavailable and premium models by default", async () => {
   const res = await authed("/v1/models");
-  const body = await res.json() as { object: string; data: Array<{ id: string; object: string }> };
+  const body = await res.json() as { object: string; data: Array<{ id: string; object: string; premium: boolean }> };
   expect(body.object).toBe("list");
-  expect(body.data.map((m) => m.id)).toEqual(["deepseek-v4.1-flash", "glm-5.3-flash", "solar-pro-4"]);
+  expect(body.data.map((m) => m.id)).toEqual(["deepseek-v4.1-flash", "glm-5.3-flash"]);
   expect(body.data.every((m) => m.object === "model")).toBe(true);
+
+  app.ctx.settings.models.showPremium = true;
+  try {
+    const all = await (await authed("/v1/models")).json() as { data: Array<{ id: string; premium: boolean }> };
+    expect(all.data.map((m) => m.id)).toEqual(["deepseek-v4.1-flash", "glm-5.3-flash", "solar-pro-4"]);
+    expect(all.data.find((m) => m.id === "solar-pro-4")?.premium).toBe(true);
+  } finally {
+    app.ctx.settings.models.showPremium = false;
+  }
 });
 
 test("usage endpoint mirrors authoritative stats", async () => {
