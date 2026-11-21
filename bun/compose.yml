@@ -1,0 +1,38 @@
+name: freepi-proxy-bun
+
+services:
+  proxy:
+    build: .
+    image: freepi-proxy:bun
+    container_name: freepi-proxy
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    environment:
+      FREEPI_HOST: 0.0.0.0
+      FREEPI_PROXY_PORT: "8452"
+      FREEPI_PROXY_URL: ${FREEPI_PROXY_URL:-http://127.0.0.1:8452}
+      FREEPI_PROXY_TOKEN: ${FREEPI_PROXY_TOKEN:?set FREEPI_PROXY_TOKEN in .env}
+      FREEPI_DASHBOARD_PASSWORD: ${FREEPI_DASHBOARD_PASSWORD:-}
+      FREEPI_ACCESS_LOG: ${FREEPI_ACCESS_LOG:-0}
+      FREEPI_DATA_DIR: /data
+      FREEPI_CREDENTIALS_PATH: /data/credentials.json
+    ports:
+      - "127.0.0.1:18095:8452"
+    volumes:
+      - freepi-data:/data
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:8452/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  freepi-data:

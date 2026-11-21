@@ -98,6 +98,27 @@ use a TLS reverse proxy, or set the token.
 - The catalog is fetched before the port opens, so `/readyz` is truthful at
   boot; a failed fetch is retried on the normal cadence.
 
+## Docker
+
+```sh
+cp .env.example .env            # set FREEPI_PROXY_TOKEN (+ dashboard password)
+docker compose up -d --build
+docker cp ~/.free-pi/agent/credentials.json freepi-proxy:/data/credentials.json
+docker exec -u root freepi-proxy chown bun:bun /data/credentials.json
+docker restart freepi-proxy
+```
+
+The container listens on `0.0.0.0:8452` and publishes on
+`127.0.0.1:18095`; put a TLS reverse proxy in front. State
+(`credentials.json`, `requests.jsonl`, session id) lives in the
+`freepi-data` volume. To log in through the dashboard instead of copying
+credentials, open it with the bearer token and use the device flow.
+
+```sh
+T=$(grep ^FREEPI_PROXY_TOKEN= .env | cut -d= -f2)
+curl -H "Authorization: Bearer $T" http://127.0.0.1:18095/v1/models
+```
+
 ## systemd
 
 ```ini
