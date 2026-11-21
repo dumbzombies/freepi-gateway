@@ -92,7 +92,7 @@ git clone https://github.com/dumbzombies/freepi-gateway.git
 cd freepi-proxy/bun
 cp .env.example .env
 sed -i "s/^FREEPI_PROXY_TOKEN=.*/FREEPI_PROXY_TOKEN=$(openssl rand -hex 24)/" .env
-docker compose up -d --build
+docker compose up -d --build   # or: docker-compose up -d --build
 ```
 
 Open **http://127.0.0.1:18095** and complete the GitHub login once. The token, session id, and

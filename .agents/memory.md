@@ -30,4 +30,4 @@ Append-only. Dated decisions and gotchas. No secrets.
 - `scripts/probe-context.mjs` and `scripts/probe-billing.mjs` were ported from `freepi-plugin`. They read
   `FREEPI_CREDENTIALS_PATH` (JSON `.token`), spend credits, and write probe JSON into `FREEPI_DATA_DIR`.
 - Docker docs added under README Install → Docker (`cd bun`, `.env`, `docker compose up -d --build`,
-  dashboard on `127.0.0.1:18095`). Installer/raw URLs now point at `dumbzombies/freepi-proxy`.
+  dashboard on `127.0.0.1:18095`). Installer/raw URLs now point at `dumbzombies/freepi-gateway` (the original `freepi-proxy` repo is disabled by GitHub).
