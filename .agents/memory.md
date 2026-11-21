@@ -31,3 +31,16 @@ Append-only. Dated decisions and gotchas. No secrets.
   `FREEPI_CREDENTIALS_PATH` (JSON `.token`), spend credits, and write probe JSON into `FREEPI_DATA_DIR`.
 - Docker docs added under README Install → Docker (`cd bun`, `.env`, `docker compose up -d --build`,
   dashboard on `127.0.0.1:18095`). Installer/raw URLs now point at `dumbzombies/freepi-gateway` (the original `freepi-proxy` repo is disabled by GitHub).
+
+## 2026-11-21 — Service removed; public repo moved
+
+- The local proxy ran as a Termux `runsv` service at `$PREFIX/var/service/freepi-proxy`
+  (`cd ~/projects/freepi-proxy && exec bun src/main.ts`). Removed with `sv-disable`,
+  `sv down`, then `rm -rf` of the service and `$PREFIX/var/log/freepi-proxy`; port 8452
+  now closed. `~/.freepi-proxy` state was kept.
+- `dumbzombies/freepi-proxy` is GitHub-disabled: edits and pushes return 403 even though
+  the listing shows public. Live code is `dumbzombies/freepi-gateway`; installer/raw URLs
+  and remote `public` point there. Do not push to `origin`.
+- `freepi-plugin` is a separate product: in-process loopback server on `8473+`, own token
+  `~/.freepi-plugin/token`, direct upstream calls, no gateway import or port dependency.
+  Running both splits the same account's credits and 4-session cap.
