@@ -55,7 +55,7 @@ archive, install to a user directory, and expose a `freepi-proxy` command. No ad
 ### Linux / macOS / Termux
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/dumbzombies/freepi-proxy/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/dumbzombies/freepi-gateway/main/install.sh | bash
 ```
 
 Installs to `${XDG_DATA_HOME:-$HOME/.local/share}/freepi-proxy` and links
@@ -64,7 +64,7 @@ Installs to `${XDG_DATA_HOME:-$HOME/.local/share}/freepi-proxy` and links
 ### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/dumbzombies/freepi-proxy/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/dumbzombies/freepi-gateway/main/install.ps1 | iex
 ```
 
 Installs to `%LOCALAPPDATA%\freepi-proxy` and writes `freepi-proxy.cmd` into
@@ -74,7 +74,7 @@ the proxy in the foreground; close the window or press `Ctrl+C` to stop it.
 ### From source
 
 ```sh
-git clone https://github.com/dumbzombies/freepi-proxy.git
+git clone https://github.com/dumbzombies/freepi-gateway.git
 cd freepi-proxy
 
 node src/main.ts      # or: bun src/main.ts
@@ -88,7 +88,7 @@ There is nothing to install: no `npm install`, no build step.
 The Bun variant ships a container with a persistent data volume:
 
 ```sh
-git clone https://github.com/dumbzombies/freepi-proxy.git
+git clone https://github.com/dumbzombies/freepi-gateway.git
 cd freepi-proxy/bun
 cp .env.example .env
 sed -i "s/^FREEPI_PROXY_TOKEN=.*/FREEPI_PROXY_TOKEN=$(openssl rand -hex 24)/" .env
