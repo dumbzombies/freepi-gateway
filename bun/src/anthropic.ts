@@ -8,7 +8,7 @@
 import { CREDIT_DIFF_MIN_MS, DASHBOARD_URL } from "./config.ts";
 import type { Ctx } from "./state.ts";
 import { completeWithSessionRetry, settleSpend } from "./state.ts";
-import { estimateCredits } from "./proxy.ts";
+import { estimateCredits, sessionLimitText } from "./proxy.ts";
 import type { CacheRun, CachedPayload } from "./cache.ts";
 import type { Catalog } from "./upstream.ts";
 import {
@@ -415,7 +415,7 @@ export class AnthropicStreamTranslator {
     this.finished = true;
     let out = "";
     if (this.buffer.trim()) {
-      out += this.handleLine(this.buffer.trim());
+      out += this.handleDataLine(this.buffer.trim());
       this.buffer = "";
     }
     if (!this.started) out += this.startEvent();
@@ -460,6 +460,12 @@ export class AnthropicStreamTranslator {
   }
 
   private handleLine(line: string): string {
+    // Frames after [DONE] must not emit events past message_stop.
+    if (this.finished) return "";
+    return this.handleDataLine(line);
+  }
+
+  private handleDataLine(line: string): string {
     if (!line.startsWith("data:")) return "";
     const payload = line.slice(5).trim();
     if (!payload) return "";
@@ -673,10 +679,13 @@ export async function handleAnthropicMessages(req: Request, ctx: Ctx): Promise<R
       ? new TextDecoder().decode(failed.body)
       : await new Response(out.stream).text().catch(() => "");
     await record(ctx, started, translated.model, source, out.status, null, text.slice(0, 300));
+    // Same actionable rewrite the OpenAI endpoint does: the account's 4-session
+    // cap is the one failure an agent can fix itself, so name it.
+    const limitMessage = sessionLimitText(out.status, text);
     const failure = anthropicError(
       out.status,
-      errorTypeForStatus(out.status),
-      upstreamErrorMessage(text, out.status),
+      limitMessage ? "rate_limit_error" : errorTypeForStatus(out.status),
+      limitMessage ?? upstreamErrorMessage(text, out.status),
     );
     failure.headers.set("x-freepi-cache", "miss");
     return failure;

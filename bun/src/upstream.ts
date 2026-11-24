@@ -299,16 +299,15 @@ export class Upstream {
    * the impression with imp_fired. Fire-and-forget — must never delay or
    * break the completion.
    */
-  runAdCycle(jwt: string, sessionId: string, turnId: string, gravityContext?: string): void {
-    void (async () => {
-      try {
-        const ad = await this.fetchAdNext(jwt, "banner", sessionId, { turnId, trigger: "user_message", gravityContext });
-        if (!ad || !ad.ad_id || !ad.click_token) return;
-        const isGravityImp = ad.source === "gravity" && typeof ad.imp_url === "string"
-          && /^https:\/\/[^/]*trygravity\.(ai|com)\//.test(ad.imp_url);
-        if (isGravityImp) await fetch(ad.imp_url, { signal: AbortSignal.timeout(3_000) }).catch(() => {});
-        await this.postImpression(jwt, ad.ad_id, ad.click_token, sessionId, isGravityImp, turnId);
-      } catch { /* best-effort */ }
-    })();
+  async runAdCycle(jwt: string, sessionId: string, turnId: string, gravityContext?: string): Promise<void> {
+    try {
+      const ad = await this.fetchAdNext(jwt, "banner", sessionId, { turnId, trigger: "user_message", gravityContext });
+      if (!ad || !ad.ad_id || !ad.click_token) return;
+      const isGravityImp = ad.source === "gravity" && typeof ad.imp_url === "string"
+        && /^https:\/\/[^/]*trygravity\.(ai|com)\//.test(ad.imp_url);
+      // The pixel is analytics: never let it delay the turn.
+      if (isGravityImp) void fetch(ad.imp_url, { signal: AbortSignal.timeout(3_000) }).catch(() => {});
+      await this.postImpression(jwt, ad.ad_id, ad.click_token, sessionId, isGravityImp, turnId);
+    } catch { /* best-effort */ }
   }
 }

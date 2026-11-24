@@ -121,9 +121,9 @@ export async function completeWithSessionRetry(
 ): Promise<SessionCompletion> {
   const send = async (sessionId: string): Promise<Response> => {
     const turnId = crypto.randomUUID();
-    // The ad cycle must run for this turn id on this session, or upstream
-    // pauses the completion with ads_required.
-    ctx.upstream.runAdCycle(jwt, sessionId, turnId, ctx.getGravityContext?.());
+    // The ad cycle must complete for this turn id on this session before the
+    // completion, or upstream pauses the response with ads_required.
+    await ctx.upstream.runAdCycle(jwt, sessionId, turnId, ctx.getGravityContext?.());
     return ctx.upstream.completions(jwt, body, signal, {
       sessionId,
       turnId,
@@ -211,8 +211,10 @@ export function pollStats(ctx: Ctx): Promise<MeStats | null> {
 export async function settleSpend(ctx: Ctx, minGapMs: number): Promise<{ credits: number; sinceTs: number } | null> {
   const now = Date.now();
   if (now - ctx.state.lastCreditDiffAt < minGapMs) return null;
-  const s = await pollStats(ctx);
+  // Stamp before the await: two completions settling at once must not both
+  // pass the gap check and reconcile the same window twice.
   ctx.state.lastCreditDiffAt = now;
+  const s = await pollStats(ctx);
   if (!s || typeof s.spent_usd_today !== "number") return null;
   const before = ctx.state.lastSettledUsd;
   ctx.state.lastSettledUsd = s.spent_usd_today;

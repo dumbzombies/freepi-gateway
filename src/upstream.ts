@@ -117,7 +117,10 @@ export class Upstream {
   /** GET /client-version — public; parses usage multipliers out of names. */
   async refreshCatalog(): Promise<Catalog | null> {
     try {
-      const res = await fetch(new URL("/client-version", this.baseUrl), { headers: { "user-agent": UA } });
+      const res = await fetch(new URL("/client-version", this.baseUrl), {
+        headers: { "user-agent": UA },
+        signal: AbortSignal.timeout(10_000),
+      });
       if (!res.ok) return this.catalog;
       const d = (await res.json()) as {
         min: string; latest: string; model: string;
@@ -156,7 +159,10 @@ export class Upstream {
   /** GET /me with the JWT (account + optional server notice). */
   async me(jwt: string): Promise<{ handle?: string; tier?: string; lane?: string; notice?: string } | null> {
     try {
-      const res = await this.authedFetch(new URL("/me", this.baseUrl), () => ({ headers: this.authHeaders(jwt) }));
+      const res = await this.authedFetch(new URL("/me", this.baseUrl), () => ({
+        headers: this.authHeaders(jwt),
+        signal: AbortSignal.timeout(10_000),
+      }));
       if (!res.ok) return null;
       return (await res.json()) as { handle?: string; tier?: string; lane?: string; notice?: string };
     } catch { return null; }
@@ -165,7 +171,10 @@ export class Upstream {
   /** GET /me/stats with the JWT. */
   async stats(jwt: string): Promise<MeStats | null> {
     try {
-      const res = await this.authedFetch(new URL("/me/stats", this.baseUrl), () => ({ headers: this.authHeaders(jwt) }));
+      const res = await this.authedFetch(new URL("/me/stats", this.baseUrl), () => ({
+        headers: this.authHeaders(jwt),
+        signal: AbortSignal.timeout(10_000),
+      }));
       if (!res.ok) return null;
       return (await res.json()) as MeStats;
     } catch {
@@ -261,7 +270,7 @@ export class Upstream {
       if (opts?.turnId) extra["x-turn-id"] = opts.turnId;
       if (opts?.trigger) extra["x-ad-trigger"] = opts.trigger;
       if (opts?.gravityContext) extra["x-gravity-context"] = opts.gravityContext;
-      const res = await fetch(new URL(`/ads/next?slot=${encodeURIComponent(slot)}`, BASE_URL), {
+      const res = await fetch(new URL(`/ads/next?slot=${encodeURIComponent(slot)}`, this.baseUrl), {
         headers: { ...this.authHeaders(jwt), ...extra },
         signal: AbortSignal.timeout(5_000),
       });
@@ -275,7 +284,7 @@ export class Upstream {
     try {
       const extra: Record<string, string> = { "x-session-id": sessionId };
       if (turnId) extra["x-turn-id"] = turnId;
-      await fetch(new URL("/ads/impression", BASE_URL), {
+      await fetch(new URL("/ads/impression", this.baseUrl), {
         method: "POST",
         headers: { ...this.authHeaders(jwt), "content-type": "application/json", ...extra },
         body: JSON.stringify({ ad_id: adId, click_token: clickToken, ...(impFired ? { imp_fired: true } : {}) }),
@@ -291,16 +300,15 @@ export class Upstream {
    * the impression with imp_fired. Fire-and-forget — must never delay or
    * break the completion.
    */
-  runAdCycle(jwt: string, sessionId: string, turnId: string, gravityContext?: string): void {
-    void (async () => {
-      try {
-        const ad = await this.fetchAdNext(jwt, "banner", sessionId, { turnId, trigger: "user_message", gravityContext });
-        if (!ad || !ad.ad_id || !ad.click_token) return;
-        const isGravityImp = ad.source === "gravity" && typeof ad.imp_url === "string"
-          && /^https:\/\/[^/]*trygravity\.(ai|com)\//.test(ad.imp_url);
-        if (isGravityImp) await fetch(ad.imp_url, { signal: AbortSignal.timeout(3_000) }).catch(() => {});
-        await this.postImpression(jwt, ad.ad_id, ad.click_token, sessionId, isGravityImp, turnId);
-      } catch { /* best-effort */ }
-    })();
+  async runAdCycle(jwt: string, sessionId: string, turnId: string, gravityContext?: string): Promise<void> {
+    try {
+      const ad = await this.fetchAdNext(jwt, "banner", sessionId, { turnId, trigger: "user_message", gravityContext });
+      if (!ad || !ad.ad_id || !ad.click_token) return;
+      const isGravityImp = ad.source === "gravity" && typeof ad.imp_url === "string"
+        && /^https:\/\/[^/]*trygravity\.(ai|com)\//.test(ad.imp_url);
+      // The pixel is analytics: never let it delay the turn.
+      if (isGravityImp) void fetch(ad.imp_url, { signal: AbortSignal.timeout(3_000) }).catch(() => {});
+      await this.postImpression(jwt, ad.ad_id, ad.click_token, sessionId, isGravityImp, turnId);
+    } catch { /* best-effort */ }
   }
 }

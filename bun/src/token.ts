@@ -123,24 +123,35 @@ export class LoginManager {
 
   start(): LoginSession {
     this.stop();
-    // synchronous start; errors surface via state
-    void this.#run();
-    return this.current!;
+    // Callers need a session synchronously; #run fills in the real device code
+    // as soon as /auth/github/device answers.
+    const session: LoginSession = {
+      flow: { session_id: "", user_code: "", verification_uri: BASE_URL, interval: 5 },
+      state: "authorizing",
+      startedAt: Date.now(),
+    };
+    this.current = session;
+    void this.#run(session);
+    return session;
   }
 
-  async #run(): Promise<void> {
+  async #run(session: LoginSession): Promise<void> {
+    // stop() or a newer start() detaches this run; a detached run must never
+    // touch the replacement session.
+    const live = (): boolean => this.current === session;
     try {
       const flow = await startDeviceFlow();
-      this.current = { flow, state: "authorizing", startedAt: Date.now() };
+      if (!live()) return;
+      session.flow = flow;
       // The CLI submits consent immediately after starting the flow.
       await submitConsent(flow.session_id);
       const interval = Math.max(Number(flow.interval) || 5, 3) * 1000;
       const deadline = Date.now() + (Number(flow.expires_in) || 900) * 1000;
       const tick = async (): Promise<void> => {
-        if (!this.current || this.current.state !== "authorizing") return;
+        if (!live() || session.state !== "authorizing") return;
         if (Date.now() > deadline) {
-          this.current.state = "error";
-          this.current.error = "device code expired";
+          session.state = "error";
+          session.error = "device code expired";
           return;
         }
         try {
@@ -150,24 +161,21 @@ export class LoginManager {
           } else if (r === "slowdown") {
             this.timer = setTimeout(tick, 10_000);
           } else {
-            this.current.state = "ok";
-            this.current.token = r;
+            session.state = "ok";
+            session.token = r;
             this.onToken?.(r);
           }
         } catch (err) {
           // tolerate transient network errors like the CLI does
           this.timer = setTimeout(tick, Math.max(interval, 5_000));
-          this.current.error = err instanceof Error ? err.message : String(err);
+          session.error = err instanceof Error ? err.message : String(err);
         }
       };
       await tick();
     } catch (err) {
-      this.current = {
-        flow: { session_id: "", user_code: "", verification_uri: BASE_URL, interval: 5 },
-        state: "error",
-        error: err instanceof Error ? err.message : String(err),
-        startedAt: Date.now(),
-      };
+      if (!live()) return;
+      session.state = "error";
+      session.error = err instanceof Error ? err.message : String(err);
     }
   }
 

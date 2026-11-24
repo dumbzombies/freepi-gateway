@@ -134,17 +134,25 @@ export async function handleUsage(ctx: Ctx, req: Request): Promise<Response> {
   }, { headers: { "cache-control": "no-store" } });
 }
 
-/** Rewrite upstream's concurrent-session rejection into a documented error. */
-export function sessionLimitError(status: number, text: string): string | null {
+/** The friendly session-cap message when a 409 is the account's concurrent-session rejection. */
+export function sessionLimitText(status: number, text: string): string | null {
   if (status !== 409) return null;
   if (!/session|concurrent|limit/i.test(text)) return null;
+  return "free-pi allows 4 concurrent sessions per account. Close another free-pi CLI/proxy session, then retry.";
+}
+
+/** Rewrite upstream's concurrent-session rejection into a documented error. */
+export function sessionLimitError(status: number, text: string): string | null {
+  const message = sessionLimitText(status, text);
+  if (!message) return null;
   let upstream: unknown = undefined;
   try {
-    upstream = (JSON.parse(text) as { error?: unknown }).error;
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "error" in parsed) upstream = parsed.error;
   } catch { /* keep the raw text out of the response */ }
   return JSON.stringify({
     error: {
-      message: "free-pi allows 4 concurrent sessions per account. Close another free-pi CLI/proxy session, then retry.",
+      message,
       type: "freepi_proxy_error",
       code: "session_limit",
       upstream,

@@ -45,11 +45,21 @@ export function newTracker() {
     } catch { /* no history yet */ }
   }
 
+  // Appends and full rewrites share one queue: a rewrite that interleaves a
+  // concurrent append either loses that entry or writes it twice.
+  let io: Promise<void> = Promise.resolve();
+  function enqueue(op: () => Promise<void>): Promise<void> {
+    io = io.then(op, op);
+    return io;
+  }
+
   async function persist(e: RequestEntry): Promise<void> {
-    try {
-      await mkdir(DATA_DIR, { recursive: true });
-      await appendFile(REQUESTS_PATH, JSON.stringify(e) + "\n");
-    } catch { /* best effort */ }
+    await enqueue(async () => {
+      try {
+        await mkdir(DATA_DIR, { recursive: true });
+        await appendFile(REQUESTS_PATH, JSON.stringify(e) + "\n");
+      } catch { /* best effort */ }
+    });
   }
 
   return {
@@ -140,11 +150,16 @@ export function newTracker() {
     },
   };
 
-  async function rewrite(): Promise<void> {
-    try {
-      await mkdir(DATA_DIR, { recursive: true });
-      await writeFile(REQUESTS_PATH, entries.map((e) => JSON.stringify(e)).join("\n") + "\n");
-    } catch { /* best effort */ }
+  function rewrite(): Promise<void> {
+    // Snapshot now: entries added while this write waits in the queue are
+    // appended after it by persist(), never written twice.
+    const snapshot = entries.slice();
+    return enqueue(async () => {
+      try {
+        await mkdir(DATA_DIR, { recursive: true });
+        await writeFile(REQUESTS_PATH, snapshot.map((e) => JSON.stringify(e)).join("\n") + "\n");
+      } catch { /* best effort */ }
+    });
   }
 }
 

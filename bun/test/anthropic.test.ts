@@ -193,3 +193,23 @@ test("maps HTTP statuses to Anthropic error types", () => {
   assert.equal(errorTypeForStatus(429), "rate_limit_error");
   assert.equal(errorTypeForStatus(500), "api_error");
 });
+
+test("drops frames that arrive after [DONE]", () => {
+  const translator = new AnthropicStreamTranslator("deepseek-v4.1-flash", 10);
+  let output = translator.push("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n");
+  output += translator.push("data: [DONE]\n\n");
+  output += translator.push("data: {\"choices\":[{\"delta\":{\"content\":\"LATE\"}}]}\n\n");
+  output += translator.finish();
+  const stop = output.indexOf("event: message_stop");
+  assert.ok(stop !== -1);
+  assert.equal(output.indexOf("LATE", stop), -1);
+});
+
+test("still processes a trailing data line with no final newline", () => {
+  const translator = new AnthropicStreamTranslator("deepseek-v4.1-flash", 10);
+  let output = translator.push("data: {\"choices\":[{\"delta\":{\"content\":\"tail\"}}]}\n\n");
+  output += translator.push("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2}}"); // no \n\n
+  output += translator.finish();
+  assert.match(output, /"input_tokens":5,"output_tokens":2/);
+  assert.match(output, /event: message_stop/);
+});

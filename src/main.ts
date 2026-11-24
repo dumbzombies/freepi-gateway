@@ -108,7 +108,9 @@ function basicOk(req: Request, password: string): boolean {
   if (!header || !/^basic /i.test(header)) return false;
   let decoded: string;
   try {
-    decoded = atob(header.slice(6).trim());
+    // Credentials are UTF-8 on the wire; atob() would yield one char per byte
+    // and a non-ASCII password could never match.
+    decoded = Buffer.from(header.slice(6).trim(), "base64").toString("utf8");
   } catch {
     return false;
   }
