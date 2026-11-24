@@ -1,0 +1,17 @@
+{
+  "name": "freepi-proxy",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+  "observability": {
+    "enabled": true
+  },
+  // The Deploy to Cloudflare wizard prompts for these values.
+  "secrets": {
+    "WORKER_API_KEY": {
+      "description": "Any string you choose; clients send it as 'Authorization: Bearer <key>'. Leave empty to disable auth (NOT recommended — anyone could spend your credits)."
+    },
+    "FREEPI_TOKENS": {
+      "description": "Your free-pi account token(s). Paste a single JWT or several separated by newlines/commas (or a JSON array). Get one via the GitHub device flow — see README."
+    }
+  }
+}

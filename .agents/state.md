@@ -1,43 +1,56 @@
 # State
 
-Last updated: 2026-11-21
+Last updated: 2026-11-24 (cfwork)
 
-Goal: keep `freepi-proxy` as a zero-dependency local gateway (OpenAI/Anthropic APIs,
-dashboard, MCP) with billing-aware model visibility, and keep `bun/src/` in sync with
-root `src/`.
+Goal: keep `freepi-proxy` as a zero-dependency gateway (OpenAI/Anthropic APIs,
+dashboard, MCP) with billing-aware model visibility, across three variants:
+canonical Node `src/`, Bun `bun/src/`, and Cloudflare Workers `cfwork/`.
 
 ## Progress
 
-- Premium-gated models hidden by default (`src/visibility.ts`, mirrored in `bun/src/`).
-  `/v1/models` exposes `free`, `premium`, `multiplier`; `/api/state` catalog carries
-  `premium`. Opt in with `models.showPremium` or `FREEPI_SHOW_PREMIUM=1`.
-- `src/settings.ts` and `bun/src/settings.ts` load `~/.freepi-proxy/settings.json` at
-  startup: cache caps, model visibility, Gravity toggle. Env seeds defaults.
-- Upstream 409 session-cap replies are rewritten to `code: "session_limit"` with
-  recovery text by `sessionLimitError` in both proxies.
+- **New: `cfwork/` Cloudflare Worker variant** — 24/7 on Workers free tier.
+  OpenAI + Anthropic endpoints (streaming both), `/v1/models`, `/v1/usage`,
+  `/v1/messages/count_tokens`, `/healthz`; account pool with in-place gate
+  handling (ads warm + 400 ms beat, fake-200 "out of date" rewarm,
+  concurrent_session → /session/reset retry, session-too-long rotation,
+  account-gate pool walk); 426 version gate; per-isolate response cache and
+  usage counters. Fail-closed `WORKER_API_KEY` bearer gate. Deploy with
+  `npx wrangler deploy` (see `cfwork/README.md`); deliberately-missing features
+  listed in `cfwork/UNPORTED.md`. Tests: 32 pass (`cd cfwork && npm test`,
+  handler invoked directly against a node:http stub — no workerd).
+- Premium-gated models hidden by default (`src/visibility.ts`, mirrored in
+  `bun/src/`); `cfwork` mirrors this via `FREEPI_SHOW_PREMIUM`.
+- Upstream 409 session-cap replies are rewritten to an actionable error on
+  BOTH endpoints in root and Bun (`sessionLimitText` in `src/proxy.ts` /
+  `bun/src/proxy.ts`); the Anthropic path emits `rate_limit_error`. In
+  `cfwork/` the same rewrite exists and additionally covers the 429 variant.
+- `AnthropicStreamTranslator` drops SSE frames arriving after `[DONE]` in all
+  three trees; the trailing-buffer flush goes through unguarded
+  `handleDataLine`.
 - Probes `scripts/probe-context.mjs` and `scripts/probe-billing.mjs` read
   `FREEPI_CREDENTIALS_PATH` (JSON `.token`).
-- Tests: `test/visibility.test.ts` and `bun/test/visibility.test.ts`; Bun
-  `test/app.test.ts` verifies hidden-by-default and opt-in listing.
-- Published public at `https://github.com/dumbzombies/freepi-gateway` (`public/main`
-  == `d025216`). Original `dumbzombies/freepi-proxy` is GitHub-disabled; do not push
-  to `origin`. Remote `public` points at the live repo.
-- Local Termux `runsv` service `freepi-proxy` was stopped, disabled, and deleted
-  (`$PREFIX/var/service/freepi-proxy`, `$PREFIX/var/log/freepi-proxy`). Port 8452 is
-  closed. `~/.freepi-proxy` state remains.
-- Plugin `~/projects/freepi-plugin` is independent: own loopback server `8473+`,
-  `~/.freepi-plugin/token`, no gateway dependency.
+- Test counts: root 42 pass / 3 skip, Bun 72 pass, cfwork 32 pass.
+- bug-hunter 2026-11-23 fixes still in place (uncommitted): login/start 500,
+  tracker append/rewrite corruption, ad-cycle race, root ads base URL,
+  non-ASCII basic auth, missing timeouts, settle double-count.
+- Published public at `https://github.com/dumbzombies/freepi-gateway`
+  (`origin/main` == `79ecb97`). Local Termux `runsv` service deleted; port
+  8452 closed. Plugin `~/projects/freepi-plugin` remains independent.
 
 ## Blockers
 
-- Docker daemon unavailable in this environment; container build documented but not
-  run.
-- `gh repo edit dumbzombies/freepi-proxy --visibility public` and pushes to `origin`
-  fail with HTTP 403 (repo disabled). Use remote `public`.
+- Docker daemon unavailable in this environment; container build documented
+  but not run.
+- No Cloudflare account/token here: `cfwork/` is verified by the 32-test
+  handler suite only; a real `wrangler deploy` + `wrangler tail` smoke is
+  still pending.
 
 ## Next actions
 
-- Push future commits to `public main`, not `origin`.
-- If the proxy is restarted, run `node src/main.ts` / `bun src/main.ts` manually or
-  reinstall a service; no service currently exists.
-- Verify Docker build on a host with a running daemon when needed.
+- Commit and push the pending work (2026-11-23/24 fixes + `cfwork/`) to
+  `origin main` (`dumbzombies/freepi-gateway`).
+- Deploy `cfwork/` once a Cloudflare account is available: `wrangler deploy`,
+  set the two secrets, smoke `/healthz` + one completion, check
+  `Metrics → CPU Time` p99 stays under 10 ms.
+- If the local proxy is restarted, run `node src/main.ts` / `bun src/main.ts`
+  manually; no service currently exists.

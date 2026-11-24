@@ -20,6 +20,7 @@ attribution, metering, caching and session rotation.
 ## Contents
 
 - [Features](#features)
+- [Run it 24/7 on Cloudflare Workers](#run-it-247-on-cloudflare-workers)
 - [Install](#install)
 - [Quick start](#quick-start)
 - [Endpoints](#endpoints)
@@ -46,6 +47,20 @@ attribution, metering, caching and session rotation.
 | **Auth handled** | GitHub device-flow login in the dashboard; shares `~/.free-pi/agent/credentials.json` with `free-pi-cli` |
 | **Resilient sessions** | Single stable session id, automatic retirement and replay when upstream expires a session |
 | **Zero dependencies** | Pure Node/Bun standard library, TypeScript executed directly |
+
+## Run it 24/7 on Cloudflare Workers
+
+A third variant lives in [`cfwork/`](cfwork/) and runs on Cloudflare Workers' **free tier**:
+always on, no machine of your own, no install step.
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dumbzombies/freepi-gateway/tree/main/cfwork)
+
+> **The Workers version is not the local version.** It is a leaner re-implementation for the
+> edge: same OpenAI/Anthropic API surface and the same upstream gate handling, but no
+> dashboard, no MCP server, no on-disk request history, no device-flow login UI (accounts are
+> configured as secrets instead), and a per-isolate best-effort response cache instead of a
+> long-lived one. See [cfwork/README.md](cfwork/README.md#differences-from-the-local-versions)
+> and [cfwork/UNPORTED.md](cfwork/UNPORTED.md).
 
 ## Install
 

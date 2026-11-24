@@ -2,13 +2,15 @@
 
 ## Project Overview
 
-`freepi-proxy` is a local gateway that turns a free-pi (freepi.ai) account into OpenAI- and
-Anthropic-compatible APIs. It also serves a dashboard/chat UI and an MCP server. Unofficial; it uses
-the same backend as `free-pi-cli` and upstream behavior can change. Zero runtime dependencies, no build
-step for source runs. Two variants share behavior but not code:
+`freepi-proxy` is a gateway that turns a free-pi (freepi.ai) account into
+OpenAI- and Anthropic-compatible APIs. It also serves a dashboard/chat UI and an
+MCP server. Unofficial; it uses the same backend as `free-pi-cli` and upstream
+behavior can change. Zero runtime dependencies, no build step for source runs.
+Three variants share behavior but not code:
 
 - **Root `src/`** — canonical Node.js build (`node:http`). This is what `freepi-proxy` installs and runs.
 - **`bun/src/`** — always-on Bun variant (`Bun.serve`), adds bearer auth, health probes, Docker packaging.
+- **`cfwork/`** — Cloudflare Workers free-tier variant (24/7, no server); account-pool gate handling per `cfwork/README.md`; see `cfwork/UNPORTED.md` for what is deliberately absent.
 
 ## Architecture & Data Flow
 
@@ -49,8 +51,9 @@ Anthropic POST /v1/messages ───────┤
 
 | Path | Purpose |
 |---|---|
-| `src/` | Canonical Node implementation, HTML dashboard, MCP server |
-| `bun/src/` | Bun variant; `app.ts` replaces `main.ts`, plus token/auth and health endpoints |
+|`src/`|Canonical Node implementation, HTML dashboard, MCP server|
+|`bun/src/`|Bun variant; `app.ts` replaces `main.ts`, plus token/auth and health endpoints|
+|`cfwork/`|Cloudflare Worker variant; `src/index.ts` router, `wrangler.jsonc`, secrets are `FREEPI_TOKENS` + `WORKER_API_KEY`|
 | `test/` | Root `node:test` suites |
 | `bun/test/` | `bun:test` suites, including real HTTP integration and dashboard extraction tests |
 | `bun/` | Bun package metadata, Dockerfile, compose file, Bun-specific README |
